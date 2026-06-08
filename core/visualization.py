@@ -43,7 +43,7 @@ def _base_layout(title: str) -> dict:
             zerolinecolor=_COLOR_AXIS,
             showgrid=True,
             tickfont=dict(color=_COLOR_TEXT),
-            dtick=1,
+            dtick=0.5,
         ),
         yaxis=dict(
             title=dict(text="Y (m)", font=dict(color=_COLOR_TEXT)),
@@ -53,7 +53,7 @@ def _base_layout(title: str) -> dict:
             zerolinecolor=_COLOR_AXIS,
             showgrid=True,
             tickfont=dict(color=_COLOR_TEXT),
-            dtick=1,
+            dtick=0.5,
         ),
         legend=dict(
             bgcolor="rgba(255, 255, 255, 0.8)",
