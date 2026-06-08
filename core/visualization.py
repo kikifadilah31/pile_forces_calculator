@@ -39,8 +39,6 @@ def _base_layout(title: str) -> dict:
         font=dict(color=_COLOR_TEXT, family="Inter, sans-serif"),
         xaxis=dict(
             title=dict(text="X (m)", font=dict(color=_COLOR_TEXT)),
-            scaleanchor="y",
-            scaleratio=1,
             gridcolor=_COLOR_GRID,
             zerolinecolor=_COLOR_AXIS,
             showgrid=True,
@@ -48,6 +46,8 @@ def _base_layout(title: str) -> dict:
         ),
         yaxis=dict(
             title=dict(text="Y (m)", font=dict(color=_COLOR_TEXT)),
+            scaleanchor="x",
+            scaleratio=1,
             gridcolor=_COLOR_GRID,
             zerolinecolor=_COLOR_AXIS,
             showgrid=True,

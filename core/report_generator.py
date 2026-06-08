@@ -39,7 +39,7 @@ def _build_envelope_table(df_envelope: pd.DataFrame, unit: str) -> str:
     # Header row
     headers = []
     for col in df_envelope.columns:
-        headers.append(f'  [*{_escape_typst(str(col))}*]')
+        headers.append(f'  [#text(white)[*{_escape_typst(str(col))}*]]')
 
     # Data rows
     data_rows = []
