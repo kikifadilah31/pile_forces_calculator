@@ -1,0 +1,789 @@
+"""
+Pile Forces Calculator Dashboard — Streamlit Application.
+
+Main entry point: `streamlit run app.py`
+
+Distributes structural reaction forces (from Midas Civil) into individual
+pile foundation forces using pile group polar inertia.
+"""
+
+import tempfile
+import os
+
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+from core.calculations import (
+    build_envelope,
+    build_master_output,
+    calc_centroid,
+    convert_units,
+)
+from core.visualization import (
+    export_figure_to_png,
+    plot_axial_bubbles,
+    plot_lateral_vectors,
+)
+from core.report_generator import (
+    compile_report_to_pdf,
+    generate_typst_report,
+)
+from core.state_manager import (
+    export_state,
+    import_state,
+)
+
+
+# ---------------------------------------------------------------------------
+# Page Configuration
+# ---------------------------------------------------------------------------
+
+st.set_page_config(
+    page_title="Pile Forces Calculator",
+    page_icon="🏗️",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
+
+# ---------------------------------------------------------------------------
+# Custom CSS
+# ---------------------------------------------------------------------------
+
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    /* Global font */
+    html, body, [class*="st-"] {
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Header styling */
+    .main-header {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
+        padding: 1.5rem 2rem;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        border: 1px solid rgba(100, 116, 139, 0.3);
+    }
+    .main-header h1 {
+        color: #f8fafc;
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin: 0;
+    }
+    .main-header p {
+        color: #94a3b8;
+        font-size: 0.9rem;
+        margin: 0.3rem 0 0 0;
+    }
+
+    /* Sidebar styling */
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+    }
+    section[data-testid="stSidebar"] .stMarkdown h3 {
+        color: #e2e8f0;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        border-bottom: 1px solid rgba(100, 116, 139, 0.3);
+        padding-bottom: 0.4rem;
+    }
+
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 4px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px 8px 0 0;
+        padding: 8px 20px;
+        font-weight: 500;
+    }
+
+    /* Data editor */
+    .stDataFrame {
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    /* Download buttons */
+    .stDownloadButton > button {
+        background: linear-gradient(135deg, #10b981, #059669);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+    .stDownloadButton > button:hover {
+        background: linear-gradient(135deg, #059669, #047857);
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+
+    /* Metric cards */
+    [data-testid="stMetric"] {
+        background: linear-gradient(135deg, #1e293b, #334155);
+        border: 1px solid rgba(100, 116, 139, 0.3);
+        border-radius: 10px;
+        padding: 12px 16px;
+    }
+    [data-testid="stMetricValue"] {
+        color: #f8fafc;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #94a3b8;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Session State Initialization
+# ---------------------------------------------------------------------------
+
+def _init_session_state():
+    """Initialize all session state variables with defaults."""
+    defaults = {
+        # Pilecap
+        "pilecap_length": 5.0,
+        "pilecap_width": 5.0,
+        "pilecap_height": 1.5,
+        "gamma_concrete": 24.0,
+        # Soil
+        "soil_height": 1.0,
+        "gamma_soil": 18.0,
+        # Pile
+        "pile_shape": "Circle",
+        "pile_dim": 0.6,
+        "pile_length": 20.0,
+        "gamma_pile": 24.0,
+        # Centroid
+        "centroid_mode": "Auto",
+        "x_centroid": 0.0,
+        "y_centroid": 0.0,
+        # Output
+        "output_unit": "kN",
+        # UI
+        "show_labels": True,
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
+
+    # Default pile coordinates (4-pile group)
+    if "df_piles" not in st.session_state:
+        st.session_state["df_piles"] = pd.DataFrame({
+            "Pile_ID": ["P1", "P2", "P3", "P4"],
+            "X": [0.0, 3.0, 0.0, 3.0],
+            "Y": [0.0, 0.0, 3.0, 3.0],
+        })
+
+    # Default load cases
+    if "df_lc" not in st.session_state:
+        st.session_state["df_lc"] = pd.DataFrame({
+            "LC_ID": ["LC1"],
+            "Fx": [100.0],
+            "Fy": [50.0],
+            "Fz": [1000.0],
+            "Mx": [200.0],
+            "My": [150.0],
+            "Mz": [80.0],
+        })
+
+
+_init_session_state()
+
+
+# ---------------------------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------------------------
+
+with st.sidebar:
+    st.markdown("### 🏗️ Project Settings")
+
+    # --- Save / Load ---
+    st.markdown("### 💾 Project State")
+
+    col_save, col_load = st.columns(2)
+    with col_save:
+        params_for_save = {
+            k: st.session_state[k]
+            for k in [
+                "pilecap_length", "pilecap_width", "pilecap_height", "gamma_concrete",
+                "soil_height", "gamma_soil",
+                "pile_shape", "pile_dim", "pile_length", "gamma_pile",
+                "centroid_mode", "x_centroid", "y_centroid",
+                "output_unit",
+            ]
+        }
+        json_str = export_state(
+            params_for_save,
+            st.session_state["df_piles"],
+            st.session_state["df_lc"],
+        )
+        st.download_button(
+            label="📥 Save",
+            data=json_str,
+            file_name="pile_design_state.json",
+            mime="application/json",
+            use_container_width=True,
+        )
+
+    with col_load:
+        uploaded_json = st.file_uploader(
+            "Load", type=["json"], label_visibility="collapsed",
+        )
+        if uploaded_json is not None:
+            try:
+                loaded_params, loaded_piles, loaded_lc = import_state(uploaded_json.read())
+                # Update session state
+                for key, val in loaded_params.items():
+                    if key in st.session_state:
+                        st.session_state[key] = val
+                st.session_state["df_piles"] = loaded_piles
+                st.session_state["df_lc"] = loaded_lc
+                st.success("✅ Project loaded!")
+                st.rerun()
+            except ValueError as exc:
+                st.error(f"❌ {exc}")
+
+    st.divider()
+
+    # --- Pilecap ---
+    st.markdown("### 📐 Pilecap Dimensions")
+    st.session_state["pilecap_length"] = st.number_input(
+        "Length (m)", value=st.session_state["pilecap_length"],
+        min_value=0.1, step=0.5, format="%.2f", key="inp_pc_l",
+    )
+    st.session_state["pilecap_width"] = st.number_input(
+        "Width (m)", value=st.session_state["pilecap_width"],
+        min_value=0.1, step=0.5, format="%.2f", key="inp_pc_w",
+    )
+    st.session_state["pilecap_height"] = st.number_input(
+        "Height / Thickness (m)", value=st.session_state["pilecap_height"],
+        min_value=0.1, step=0.1, format="%.2f", key="inp_pc_h",
+    )
+    st.session_state["gamma_concrete"] = st.number_input(
+        "γ Concrete (kN/m³)", value=st.session_state["gamma_concrete"],
+        min_value=1.0, step=0.5, format="%.1f", key="inp_gc",
+    )
+
+    st.divider()
+
+    # --- Soil ---
+    st.markdown("### 🌍 Soil Backfill")
+    st.session_state["soil_height"] = st.number_input(
+        "Fill Height (m)", value=st.session_state["soil_height"],
+        min_value=0.0, step=0.5, format="%.2f", key="inp_sh",
+    )
+    st.session_state["gamma_soil"] = st.number_input(
+        "γ Soil (kN/m³)", value=st.session_state["gamma_soil"],
+        min_value=1.0, step=0.5, format="%.1f", key="inp_gs",
+    )
+
+    st.divider()
+
+    # --- Pile ---
+    st.markdown("### 🪵 Pile Dimensions")
+    st.session_state["pile_shape"] = st.selectbox(
+        "Pile Shape", ["Circle", "Square"],
+        index=0 if st.session_state["pile_shape"] == "Circle" else 1,
+        key="inp_shape",
+    )
+    dim_label = "Diameter (m)" if st.session_state["pile_shape"] == "Circle" else "Width (m)"
+    st.session_state["pile_dim"] = st.number_input(
+        dim_label, value=st.session_state["pile_dim"],
+        min_value=0.05, step=0.1, format="%.3f", key="inp_dim",
+    )
+    st.session_state["pile_length"] = st.number_input(
+        "Pile Length (m)", value=st.session_state["pile_length"],
+        min_value=0.5, step=1.0, format="%.2f", key="inp_pl",
+    )
+    st.session_state["gamma_pile"] = st.number_input(
+        "γ Pile (kN/m³)", value=st.session_state["gamma_pile"],
+        min_value=1.0, step=0.5, format="%.1f", key="inp_gp",
+    )
+
+    st.divider()
+
+    # --- Centroid ---
+    st.markdown("### 🎯 Centroid Configuration")
+    st.session_state["centroid_mode"] = st.radio(
+        "Centroid Calculation",
+        ["Auto", "Manual"],
+        index=0 if st.session_state["centroid_mode"] == "Auto" else 1,
+        key="inp_centroid",
+        horizontal=True,
+    )
+    if st.session_state["centroid_mode"] == "Manual":
+        st.session_state["x_centroid"] = st.number_input(
+            "X Centroid (m)", value=st.session_state["x_centroid"],
+            step=0.1, format="%.3f", key="inp_xc",
+        )
+        st.session_state["y_centroid"] = st.number_input(
+            "Y Centroid (m)", value=st.session_state["y_centroid"],
+            step=0.1, format="%.3f", key="inp_yc",
+        )
+
+    st.divider()
+
+    # --- Output Unit ---
+    st.markdown("### 📏 Output Unit")
+    st.session_state["output_unit"] = st.selectbox(
+        "Force Unit", ["kN", "Ton"],
+        index=0 if st.session_state["output_unit"] == "kN" else 1,
+        key="inp_unit",
+    )
+
+    st.divider()
+
+    # --- Plot toggle ---
+    st.session_state["show_labels"] = st.checkbox(
+        "Show Force Values on Plot",
+        value=st.session_state["show_labels"],
+        key="inp_labels",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Header
+# ---------------------------------------------------------------------------
+
+st.markdown("""
+<div class="main-header">
+    <h1>🏗️ Pile Forces Calculator</h1>
+    <p>Automated distribution of structural reaction forces into individual pile foundation forces</p>
+</div>
+""", unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Main Tabs
+# ---------------------------------------------------------------------------
+
+tab_input, tab_results, tab_lateral, tab_axial, tab_envelope, tab_report = st.tabs([
+    "📥 Input Data",
+    "📊 Results",
+    "📈 Lateral Vectors",
+    "🔴 Axial Bubbles",
+    "📋 Envelope",
+    "📄 Report",
+])
+
+
+# ========================== TAB: Input Data ================================
+
+with tab_input:
+    st.subheader("Pile Coordinates & Load Cases")
+
+    col_piles, col_lc = st.columns(2)
+
+    with col_piles:
+        st.markdown("**Table 1: Pile Coordinates** (m)")
+
+        # CSV Upload for piles
+        uploaded_piles_csv = st.file_uploader(
+            "Upload Pile CSV", type=["csv"], key="upload_piles",
+        )
+        if uploaded_piles_csv is not None:
+            try:
+                df_uploaded = pd.read_csv(uploaded_piles_csv)
+                required = {"Pile_ID", "X", "Y"}
+                if required.issubset(set(df_uploaded.columns)):
+                    st.session_state["df_piles"] = df_uploaded[list(required)]
+                    st.success("✅ Pile coordinates loaded from CSV")
+                else:
+                    st.error(f"❌ CSV harus memiliki kolom: {required}")
+            except Exception as exc:
+                st.error(f"❌ Error membaca CSV: {exc}")
+
+        edited_piles = st.data_editor(
+            st.session_state["df_piles"],
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor_piles",
+        )
+        st.session_state["df_piles"] = edited_piles
+
+    with col_lc:
+        st.markdown("**Table 2: Load Cases** (kN, kN·m)")
+
+        # CSV Upload for load cases
+        uploaded_lc_csv = st.file_uploader(
+            "Upload Load Cases CSV", type=["csv"], key="upload_lc",
+        )
+        if uploaded_lc_csv is not None:
+            try:
+                df_uploaded_lc = pd.read_csv(uploaded_lc_csv)
+                required_lc = {"LC_ID", "Fx", "Fy", "Fz", "Mx", "My", "Mz"}
+                if required_lc.issubset(set(df_uploaded_lc.columns)):
+                    st.session_state["df_lc"] = df_uploaded_lc[list(required_lc)]
+                    st.success("✅ Load cases loaded from CSV")
+                else:
+                    st.error(f"❌ CSV harus memiliki kolom: {required_lc}")
+            except Exception as exc:
+                st.error(f"❌ Error membaca CSV: {exc}")
+
+        edited_lc = st.data_editor(
+            st.session_state["df_lc"],
+            num_rows="dynamic",
+            use_container_width=True,
+            key="editor_lc",
+        )
+        st.session_state["df_lc"] = edited_lc
+
+    # --- Quick info ---
+    st.divider()
+    info_cols = st.columns(4)
+    with info_cols[0]:
+        st.metric("Total Piles", len(st.session_state["df_piles"]))
+    with info_cols[1]:
+        st.metric("Load Cases", len(st.session_state["df_lc"]))
+    with info_cols[2]:
+        if st.session_state["centroid_mode"] == "Auto":
+            x_c, y_c = calc_centroid(st.session_state["df_piles"])
+        else:
+            x_c = st.session_state["x_centroid"]
+            y_c = st.session_state["y_centroid"]
+        st.metric("Centroid X", f"{x_c:.3f} m")
+    with info_cols[3]:
+        st.metric("Centroid Y", f"{y_c:.3f} m")
+
+
+# ========================== Calculation Engine =============================
+
+# Build parameters dict
+params = {
+    "pilecap_length": st.session_state["pilecap_length"],
+    "pilecap_width": st.session_state["pilecap_width"],
+    "pilecap_height": st.session_state["pilecap_height"],
+    "gamma_concrete": st.session_state["gamma_concrete"],
+    "soil_height": st.session_state["soil_height"],
+    "gamma_soil": st.session_state["gamma_soil"],
+    "pile_shape": st.session_state["pile_shape"],
+    "pile_dim": st.session_state["pile_dim"],
+    "pile_length": st.session_state["pile_length"],
+    "gamma_pile": st.session_state["gamma_pile"],
+    "centroid_mode": st.session_state["centroid_mode"],
+    "x_centroid": st.session_state["x_centroid"],
+    "y_centroid": st.session_state["y_centroid"],
+}
+
+df_piles = st.session_state["df_piles"].copy()
+df_lc = st.session_state["df_lc"].copy()
+
+# Validate data before running calculation
+can_calculate = (
+    len(df_piles) > 0
+    and len(df_lc) > 0
+    and {"Pile_ID", "X", "Y"}.issubset(set(df_piles.columns))
+    and {"LC_ID", "Fx", "Fy", "Fz", "Mx", "My", "Mz"}.issubset(set(df_lc.columns))
+)
+
+if can_calculate:
+    try:
+        # Ensure numeric types
+        for col in ["X", "Y"]:
+            df_piles[col] = pd.to_numeric(df_piles[col], errors="coerce")
+        for col in ["Fx", "Fy", "Fz", "Mx", "My", "Mz"]:
+            df_lc[col] = pd.to_numeric(df_lc[col], errors="coerce")
+
+        df_piles = df_piles.dropna(subset=["Pile_ID", "X", "Y"])
+        df_lc = df_lc.dropna(subset=["LC_ID", "Fx", "Fy", "Fz", "Mx", "My", "Mz"])
+
+        df_master = build_master_output(df_piles, df_lc, params)
+        df_envelope = build_envelope(df_master)
+
+        # Determine centroid for plots
+        if params["centroid_mode"] == "Auto":
+            centroid = calc_centroid(df_piles)
+        else:
+            centroid = (params["x_centroid"], params["y_centroid"])
+
+        unit = st.session_state["output_unit"]
+
+        # Apply unit conversion for display
+        df_master_display = convert_units(df_master, unit)
+        df_envelope_display = convert_units(df_envelope, unit)
+
+        calculation_ok = True
+    except Exception as exc:
+        st.error(f"❌ Calculation error: {exc}")
+        calculation_ok = False
+else:
+    calculation_ok = False
+
+
+# ========================== TAB: Results ===================================
+
+with tab_results:
+    if calculation_ok:
+        st.subheader(f"Master Output ({unit})")
+
+        st.dataframe(
+            df_master_display.style.format({
+                "X": "{:.3f}", "Y": "{:.3f}",
+                "Axial_Force": "{:.2f}", "Hx": "{:.2f}",
+                "Hy": "{:.2f}", "H_Resultant": "{:.2f}",
+            }),
+            use_container_width=True,
+            height=400,
+        )
+
+        # CSV Download
+        csv_data = df_master_display.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇️ Download Results CSV",
+            data=csv_data,
+            file_name="pile_forces_results.csv",
+            mime="text/csv",
+        )
+
+        # Summary metrics
+        st.divider()
+        st.markdown("**Quick Summary**")
+        sum_cols = st.columns(4)
+        with sum_cols[0]:
+            st.metric("Max Compression", f"{df_master_display['Axial_Force'].max():.2f} {unit}")
+        with sum_cols[1]:
+            st.metric("Max Tension", f"{df_master_display['Axial_Force'].min():.2f} {unit}")
+        with sum_cols[2]:
+            st.metric("Max Lateral", f"{df_master_display['H_Resultant'].max():.2f} {unit}")
+        with sum_cols[3]:
+            st.metric("Total Combinations", f"{len(df_master_display)}")
+    else:
+        st.info("📝 Masukkan data pile coordinates dan load cases pada tab Input Data.")
+
+
+# ========================== TAB: Lateral Vectors ===========================
+
+with tab_lateral:
+    if calculation_ok:
+        st.subheader("Lateral Force Vectors — Top-Down View")
+
+        lc_ids = df_master["LC_ID"].unique().tolist()
+        selected_lc_lat = st.selectbox(
+            "Select Load Case", lc_ids, key="sel_lc_lat",
+        )
+
+        df_lc_subset = df_master_display[df_master_display["LC_ID"] == selected_lc_lat].copy()
+
+        fig_lateral = plot_lateral_vectors(
+            df_lc_subset,
+            centroid,
+            show_labels=st.session_state["show_labels"],
+            unit=unit,
+        )
+
+        st.plotly_chart(
+            fig_lateral,
+            use_container_width=True,
+            config={
+                "displayModeBar": True,
+                "toImageButtonOptions": {
+                    "format": "png",
+                    "filename": f"lateral_vectors_{selected_lc_lat}",
+                    "height": 800,
+                    "width": 1200,
+                    "scale": 2,
+                },
+            },
+        )
+    else:
+        st.info("📝 Masukkan data pada tab Input Data untuk melihat visualisasi.")
+
+
+# ========================== TAB: Axial Bubbles =============================
+
+with tab_axial:
+    if calculation_ok:
+        st.subheader("Axial Force Distribution — Bubble Plot")
+
+        lc_ids_ax = df_master["LC_ID"].unique().tolist()
+        selected_lc_ax = st.selectbox(
+            "Select Load Case", lc_ids_ax, key="sel_lc_ax",
+        )
+
+        df_ax_subset = df_master_display[df_master_display["LC_ID"] == selected_lc_ax].copy()
+
+        fig_axial = plot_axial_bubbles(
+            df_ax_subset,
+            centroid,
+            show_labels=st.session_state["show_labels"],
+            unit=unit,
+        )
+
+        st.plotly_chart(
+            fig_axial,
+            use_container_width=True,
+            config={
+                "displayModeBar": True,
+                "toImageButtonOptions": {
+                    "format": "png",
+                    "filename": f"axial_bubbles_{selected_lc_ax}",
+                    "height": 800,
+                    "width": 1200,
+                    "scale": 2,
+                },
+            },
+        )
+
+        # Legend explanation
+        st.markdown("""
+        <div style="display: flex; gap: 24px; align-items: center; padding: 8px 0;">
+            <span style="color: #ef4444; font-weight: 600;">🔴 Compression (+)</span>
+            <span style="color: #3b82f6; font-weight: 600;">🔵 Tension (−)</span>
+            <span style="color: #fbbf24; font-weight: 600;">✚ Centroid</span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.info("📝 Masukkan data pada tab Input Data untuk melihat visualisasi.")
+
+
+# ========================== TAB: Envelope ==================================
+
+with tab_envelope:
+    if calculation_ok:
+        st.subheader(f"Governing Load Cases — Envelope Summary ({unit})")
+
+        st.dataframe(
+            df_envelope_display.style.format({
+                col: "{:.2f}" for col in ["Max_Compression", "Max_Tension", "Max_Lateral"]
+                if col in df_envelope_display.columns
+            }),
+            use_container_width=True,
+        )
+
+        # CSV Download
+        csv_env = df_envelope_display.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="⬇️ Download Envelope CSV",
+            data=csv_env,
+            file_name="pile_forces_envelope.csv",
+            mime="text/csv",
+        )
+
+        # Highlight critical values
+        st.divider()
+        st.markdown("**Critical Values Across All Piles**")
+        crit_cols = st.columns(3)
+        with crit_cols[0]:
+            max_comp_val = df_envelope_display["Max_Compression"].max()
+            max_comp_pile = df_envelope_display.loc[
+                df_envelope_display["Max_Compression"].idxmax(), "Pile_ID"
+            ]
+            st.metric(
+                "Highest Compression",
+                f"{max_comp_val:.2f} {unit}",
+                delta=f"Pile {max_comp_pile}",
+                delta_color="off",
+            )
+        with crit_cols[1]:
+            max_tens_val = df_envelope_display["Max_Tension"].min()
+            max_tens_pile = df_envelope_display.loc[
+                df_envelope_display["Max_Tension"].idxmin(), "Pile_ID"
+            ]
+            st.metric(
+                "Highest Tension",
+                f"{max_tens_val:.2f} {unit}",
+                delta=f"Pile {max_tens_pile}",
+                delta_color="off",
+            )
+        with crit_cols[2]:
+            max_lat_val = df_envelope_display["Max_Lateral"].max()
+            max_lat_pile = df_envelope_display.loc[
+                df_envelope_display["Max_Lateral"].idxmax(), "Pile_ID"
+            ]
+            st.metric(
+                "Highest Lateral",
+                f"{max_lat_val:.2f} {unit}",
+                delta=f"Pile {max_lat_pile}",
+                delta_color="off",
+            )
+    else:
+        st.info("📝 Masukkan data pada tab Input Data untuk melihat envelope.")
+
+
+# ========================== TAB: Report ====================================
+
+with tab_report:
+    if calculation_ok:
+        st.subheader("📄 Generate PDF Report")
+        st.markdown(
+            "Generate a professional technical report with parameters, "
+            "methodology, visualizations, and governing load case table."
+        )
+
+        if st.button("🔄 Generate PDF Report", type="primary", use_container_width=True):
+            with st.spinner("Generating report..."):
+                try:
+                    # Export plots to temp PNG files
+                    with tempfile.TemporaryDirectory() as tmp_dir:
+                        plot_paths = []
+
+                        # Lateral vectors (use first LC)
+                        first_lc = df_master["LC_ID"].unique()[0]
+                        df_lat_first = df_master[df_master["LC_ID"] == first_lc]
+                        fig_lat = plot_lateral_vectors(
+                            df_lat_first, centroid,
+                            show_labels=True, unit=unit,
+                        )
+                        lat_path = os.path.join(tmp_dir, "lateral_vectors.png")
+                        export_figure_to_png(fig_lat, lat_path)
+                        plot_paths.append(lat_path)
+
+                        # Axial bubbles (use first LC)
+                        fig_ax = plot_axial_bubbles(
+                            df_lat_first, centroid,
+                            show_labels=True, unit=unit,
+                        )
+                        ax_path = os.path.join(tmp_dir, "axial_bubbles.png")
+                        export_figure_to_png(fig_ax, ax_path)
+                        plot_paths.append(ax_path)
+
+                        # Generate Typst source
+                        typst_src = generate_typst_report(
+                            df_envelope_display,
+                            params,
+                            plot_paths,
+                            unit=unit,
+                        )
+
+                        # Compile to PDF
+                        pdf_bytes = compile_report_to_pdf(typst_src, plot_paths)
+
+                        if pdf_bytes is not None:
+                            st.success("✅ Report generated successfully!")
+                            st.download_button(
+                                label="📥 Download Technical Report (PDF)",
+                                data=pdf_bytes,
+                                file_name="Pile_Analysis_Report.pdf",
+                                mime="application/pdf",
+                                use_container_width=True,
+                            )
+                        else:
+                            st.warning(
+                                "⚠️ Package `typst` tidak tersedia. "
+                                "Install dengan: `pip install typst`"
+                            )
+                except Exception as exc:
+                    st.error(f"❌ Report generation failed: {exc}")
+    else:
+        st.info("📝 Masukkan data pada tab Input Data untuk generate report.")
+
+
+# ---------------------------------------------------------------------------
+# Footer
+# ---------------------------------------------------------------------------
+
+st.divider()
+st.markdown(
+    "<p style='text-align: center; color: #64748b; font-size: 0.8rem;'>"
+    "Pile Forces Calculator v0.0 — Built with Streamlit & Python"
+    "</p>",
+    unsafe_allow_html=True,
+)

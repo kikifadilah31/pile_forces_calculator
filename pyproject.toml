@@ -1,0 +1,13 @@
+[project]
+name = "pile-forces-calculator"
+version = "0.0.0"
+description = "Pile Forces Calculator Dashboard - Distributes structural reaction forces into individual pile foundation forces"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.30",
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "plotly>=5.18",
+    "kaleido>=0.2.1",
+    "typst>=0.12",
+]
