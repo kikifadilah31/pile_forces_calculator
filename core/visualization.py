@@ -203,7 +203,7 @@ def plot_axial_bubbles(
     max_force = abs_force.max() if abs_force.max() > 1e-6 else 1.0
 
     # Bubble size: minimum 15px, max 60px, scaled proportionally
-    bubble_sizes = 15 + (abs_force / max_force) * 45
+    bubble_sizes = np.where(abs_force == 0, 0, 15 + (abs_force / max_force) * 45)
 
     # Color: compression (positive) = red, tension (negative) = blue
     colors = np.where(
@@ -335,7 +335,7 @@ def plot_envelope_axial(
     abs_force = df_envelope[col].abs()
     max_force = abs_force.max() if abs_force.max() > 1e-6 else 1.0
 
-    bubble_sizes = 15 + (abs_force / max_force) * 45
+    bubble_sizes = np.where(abs_force == 0, 0, 15 + (abs_force / max_force) * 45)
 
     # Determine colors
     colors = np.where(

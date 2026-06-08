@@ -311,12 +311,18 @@ def build_envelope(df_master: pd.DataFrame) -> pd.DataFrame:
     max_comp = df_master.loc[idx_max_comp, ["Pile_ID", "X", "Y", "Axial_Force", "LC_ID"]].rename(
         columns={"Axial_Force": "Max_Compression", "LC_ID": "LC_Max_Comp"},
     )
+    # If the maximum axial force is negative, there is no compression at all
+    mask_no_comp = max_comp["Max_Compression"] < 0
+    max_comp.loc[mask_no_comp, ["Max_Compression", "LC_Max_Comp"]] = [0.0, "-"]
 
     # Max Tension = minimum Axial_Force (most negative)
     idx_max_tens = grouped["Axial_Force"].idxmin()
     max_tens = df_master.loc[idx_max_tens, ["Pile_ID", "Axial_Force", "LC_ID"]].rename(
         columns={"Axial_Force": "Max_Tension", "LC_ID": "LC_Max_Tens"},
     )
+    # If the minimum axial force is positive, there is no tension at all
+    mask_no_tens = max_tens["Max_Tension"] > 0
+    max_tens.loc[mask_no_tens, ["Max_Tension", "LC_Max_Tens"]] = [0.0, "-"]
 
     # Max Lateral = maximum H_Resultant
     idx_max_lat = grouped["H_Resultant"].idxmax()
