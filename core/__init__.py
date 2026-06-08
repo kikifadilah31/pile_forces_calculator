@@ -20,6 +20,8 @@ from core.calculations import (
 from core.visualization import (
     plot_lateral_vectors,
     plot_axial_bubbles,
+    plot_envelope_axial,
+    plot_envelope_lateral,
     export_figure_to_png,
 )
 from core.report_generator import (

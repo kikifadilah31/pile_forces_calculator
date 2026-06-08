@@ -301,6 +301,161 @@ def plot_axial_bubbles(
 
 
 # ---------------------------------------------------------------------------
+# Envelope Visualizations
+# ---------------------------------------------------------------------------
+
+def plot_envelope_axial(
+    df_envelope: pd.DataFrame,
+    centroid: tuple[float, float],
+    show_labels: bool = True,
+    unit: str = "kN",
+) -> go.Figure:
+    """Create grouped bar chart showing Max Compression and Max Tension per pile.
+
+    Parameters
+    ----------
+    df_envelope : Envelope DataFrame with columns
+        [Pile_ID, Max_Compression, LC_Max_Comp, Max_Tension, LC_Max_Tens, ...]
+    centroid : (x_c, y_c)
+    show_labels : whether to show values on bars
+    unit : display unit
+    """
+    fig = go.Figure()
+
+    pile_ids = df_envelope["Pile_ID"].astype(str).tolist()
+
+    # Max Compression bars (positive = compression)
+    fig.add_trace(go.Bar(
+        x=pile_ids,
+        y=df_envelope["Max_Compression"],
+        name="Max Compression",
+        marker=dict(
+            color="rgba(239, 68, 68, 0.85)",
+            line=dict(width=1, color="rgba(239, 68, 68, 1.0)"),
+        ),
+        text=[f"{v:.1f}" for v in df_envelope["Max_Compression"]] if show_labels else None,
+        textposition="outside",
+        textfont=dict(size=10, color="rgba(239, 68, 68, 1.0)"),
+        customdata=df_envelope["LC_Max_Comp"].values,
+        hovertemplate=(
+            "<b>Pile %{x}</b><br>"
+            "Max Compression: %{y:.2f} " + unit + "<br>"
+            "LC: %{customdata}<br>"
+            "<extra></extra>"
+        ),
+    ))
+
+    # Max Tension bars (negative = tension)
+    fig.add_trace(go.Bar(
+        x=pile_ids,
+        y=df_envelope["Max_Tension"],
+        name="Max Tension",
+        marker=dict(
+            color="rgba(59, 130, 246, 0.85)",
+            line=dict(width=1, color="rgba(59, 130, 246, 1.0)"),
+        ),
+        text=[f"{v:.1f}" for v in df_envelope["Max_Tension"]] if show_labels else None,
+        textposition="outside",
+        textfont=dict(size=10, color="rgba(59, 130, 246, 1.0)"),
+        customdata=df_envelope["LC_Max_Tens"].values,
+        hovertemplate=(
+            "<b>Pile %{x}</b><br>"
+            "Max Tension: %{y:.2f} " + unit + "<br>"
+            "LC: %{customdata}<br>"
+            "<extra></extra>"
+        ),
+    ))
+
+    layout = _base_layout(f"Envelope — Max Axial Forces ({unit})")
+    layout.update(
+        barmode="group",
+        xaxis=dict(
+            title="Pile ID",
+            gridcolor=_COLOR_GRID,
+            zerolinecolor=_COLOR_GRID,
+            scaleanchor=None,
+        ),
+        yaxis=dict(
+            title=f"Axial Force ({unit})",
+            gridcolor=_COLOR_GRID,
+            zerolinecolor="rgba(148, 163, 184, 0.6)",
+            zerolinewidth=2,
+        ),
+    )
+
+    # Add zero line annotation
+    fig.update_layout(**layout)
+
+    # Add horizontal line at zero for reference
+    fig.add_hline(
+        y=0, line_dash="dot",
+        line_color="rgba(148, 163, 184, 0.5)",
+        line_width=1,
+    )
+
+    return fig
+
+
+def plot_envelope_lateral(
+    df_envelope: pd.DataFrame,
+    centroid: tuple[float, float],
+    show_labels: bool = True,
+    unit: str = "kN",
+) -> go.Figure:
+    """Create bar chart showing Max Lateral Resultant per pile.
+
+    Parameters
+    ----------
+    df_envelope : Envelope DataFrame with columns
+        [Pile_ID, ..., Max_Lateral, LC_Max_Lat]
+    centroid : (x_c, y_c)
+    show_labels : whether to show values on bars
+    unit : display unit
+    """
+    fig = go.Figure()
+
+    pile_ids = df_envelope["Pile_ID"].astype(str).tolist()
+
+    fig.add_trace(go.Bar(
+        x=pile_ids,
+        y=df_envelope["Max_Lateral"],
+        name="Max Lateral",
+        marker=dict(
+            color="rgba(16, 185, 129, 0.85)",
+            line=dict(width=1, color="rgba(16, 185, 129, 1.0)"),
+        ),
+        text=[f"{v:.1f}" for v in df_envelope["Max_Lateral"]] if show_labels else None,
+        textposition="outside",
+        textfont=dict(size=10, color="rgba(16, 185, 129, 1.0)"),
+        customdata=df_envelope["LC_Max_Lat"].values,
+        hovertemplate=(
+            "<b>Pile %{x}</b><br>"
+            "Max Lateral: %{y:.2f} " + unit + "<br>"
+            "LC: %{customdata}<br>"
+            "<extra></extra>"
+        ),
+    ))
+
+    layout = _base_layout(f"Envelope — Max Lateral Forces ({unit})")
+    layout.update(
+        xaxis=dict(
+            title="Pile ID",
+            gridcolor=_COLOR_GRID,
+            zerolinecolor=_COLOR_GRID,
+            scaleanchor=None,
+        ),
+        yaxis=dict(
+            title=f"Lateral Force ({unit})",
+            gridcolor=_COLOR_GRID,
+            zerolinecolor=_COLOR_GRID,
+        ),
+    )
+
+    fig.update_layout(**layout)
+    return fig
+
+
+# ---------------------------------------------------------------------------
 # PNG Export
 # ---------------------------------------------------------------------------
 
@@ -315,3 +470,4 @@ def export_figure_to_png(fig: go.Figure, path: str, width: int = 1200, height: i
     height : image height in pixels
     """
     fig.write_image(path, width=width, height=height, engine="kaleido")
+

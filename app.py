@@ -23,6 +23,8 @@ from core.calculations import (
 from core.visualization import (
     export_figure_to_png,
     plot_axial_bubbles,
+    plot_envelope_axial,
+    plot_envelope_lateral,
     plot_lateral_vectors,
 )
 from core.report_generator import (
@@ -208,48 +210,44 @@ with st.sidebar:
     # --- Save / Load ---
     st.markdown("### 💾 Project State")
 
-    col_save, col_load = st.columns(2)
-    with col_save:
-        params_for_save = {
-            k: st.session_state[k]
-            for k in [
-                "pilecap_length", "pilecap_width", "pilecap_height", "gamma_concrete",
-                "soil_height", "gamma_soil",
-                "pile_shape", "pile_dim", "pile_length", "gamma_pile",
-                "centroid_mode", "x_centroid", "y_centroid",
-                "output_unit",
-            ]
-        }
-        json_str = export_state(
-            params_for_save,
-            st.session_state["df_piles"],
-            st.session_state["df_lc"],
-        )
-        st.download_button(
-            label="📥 Save",
-            data=json_str,
-            file_name="pile_design_state.json",
-            mime="application/json",
-            width="stretch",
-        )
+    params_for_save = {
+        k: st.session_state[k]
+        for k in [
+            "pilecap_length", "pilecap_width", "pilecap_height", "gamma_concrete",
+            "soil_height", "gamma_soil",
+            "pile_shape", "pile_dim", "pile_length", "gamma_pile",
+            "centroid_mode", "x_centroid", "y_centroid",
+            "output_unit",
+        ]
+    }
+    json_str = export_state(
+        params_for_save,
+        st.session_state["df_piles"],
+        st.session_state["df_lc"],
+    )
+    st.download_button(
+        label="📥 Save Project",
+        data=json_str,
+        file_name="pile_design_state.json",
+        mime="application/json",
+        key="btn_save_project",
+    )
 
-    with col_load:
-        uploaded_json = st.file_uploader(
-            "Load", type=["json"], label_visibility="collapsed",
-        )
-        if uploaded_json is not None:
-            try:
-                loaded_params, loaded_piles, loaded_lc = import_state(uploaded_json.read())
-                # Update session state
-                for key, val in loaded_params.items():
-                    if key in st.session_state:
-                        st.session_state[key] = val
-                st.session_state["df_piles"] = loaded_piles
-                st.session_state["df_lc"] = loaded_lc
-                st.success("✅ Project loaded!")
-                st.rerun()
-            except ValueError as exc:
-                st.error(f"❌ {exc}")
+    uploaded_json = st.file_uploader(
+        "📂 Load Project (.json)", type=["json"], key="upload_project",
+    )
+    if uploaded_json is not None:
+        try:
+            loaded_params, loaded_piles, loaded_lc = import_state(uploaded_json.read())
+            for key, val in loaded_params.items():
+                if key in st.session_state:
+                    st.session_state[key] = val
+            st.session_state["df_piles"] = loaded_piles
+            st.session_state["df_lc"] = loaded_lc
+            st.success("✅ Project loaded!")
+            st.rerun()
+        except ValueError as exc:
+            st.error(f"❌ {exc}")
 
     st.divider()
 
@@ -385,21 +383,21 @@ with tab_input:
     with col_piles:
         st.markdown("**Table 1: Pile Coordinates** (m)")
 
-        # CSV Upload for piles
-        uploaded_piles_csv = st.file_uploader(
-            "Upload Pile CSV", type=["csv"], key="upload_piles",
-        )
-        if uploaded_piles_csv is not None:
-            try:
-                df_uploaded = pd.read_csv(uploaded_piles_csv)
-                required = {"Pile_ID", "X", "Y"}
-                if required.issubset(set(df_uploaded.columns)):
-                    st.session_state["df_piles"] = df_uploaded[list(required)]
-                    st.success("✅ Pile coordinates loaded from CSV")
-                else:
-                    st.error(f"❌ CSV harus memiliki kolom: {required}")
-            except Exception as exc:
-                st.error(f"❌ Error membaca CSV: {exc}")
+        with st.expander("📁 Import from CSV", expanded=False):
+            uploaded_piles_csv = st.file_uploader(
+                "Choose pile coordinates CSV", type=["csv"], key="upload_piles",
+            )
+            if uploaded_piles_csv is not None:
+                try:
+                    df_uploaded = pd.read_csv(uploaded_piles_csv)
+                    required = {"Pile_ID", "X", "Y"}
+                    if required.issubset(set(df_uploaded.columns)):
+                        st.session_state["df_piles"] = df_uploaded[list(required)]
+                        st.success("✅ Pile coordinates loaded from CSV")
+                    else:
+                        st.error(f"❌ CSV harus memiliki kolom: {required}")
+                except Exception as exc:
+                    st.error(f"❌ Error membaca CSV: {exc}")
 
         edited_piles = st.data_editor(
             st.session_state["df_piles"],
@@ -412,21 +410,21 @@ with tab_input:
     with col_lc:
         st.markdown("**Table 2: Load Cases** (kN, kN·m)")
 
-        # CSV Upload for load cases
-        uploaded_lc_csv = st.file_uploader(
-            "Upload Load Cases CSV", type=["csv"], key="upload_lc",
-        )
-        if uploaded_lc_csv is not None:
-            try:
-                df_uploaded_lc = pd.read_csv(uploaded_lc_csv)
-                required_lc = {"LC_ID", "Fx", "Fy", "Fz", "Mx", "My", "Mz"}
-                if required_lc.issubset(set(df_uploaded_lc.columns)):
-                    st.session_state["df_lc"] = df_uploaded_lc[list(required_lc)]
-                    st.success("✅ Load cases loaded from CSV")
-                else:
-                    st.error(f"❌ CSV harus memiliki kolom: {required_lc}")
-            except Exception as exc:
-                st.error(f"❌ Error membaca CSV: {exc}")
+        with st.expander("📁 Import from CSV", expanded=False):
+            uploaded_lc_csv = st.file_uploader(
+                "Choose load cases CSV", type=["csv"], key="upload_lc",
+            )
+            if uploaded_lc_csv is not None:
+                try:
+                    df_uploaded_lc = pd.read_csv(uploaded_lc_csv)
+                    required_lc = {"LC_ID", "Fx", "Fy", "Fz", "Mx", "My", "Mz"}
+                    if required_lc.issubset(set(df_uploaded_lc.columns)):
+                        st.session_state["df_lc"] = df_uploaded_lc[list(required_lc)]
+                        st.success("✅ Load cases loaded from CSV")
+                    else:
+                        st.error(f"❌ CSV harus memiliki kolom: {required_lc}")
+                except Exception as exc:
+                    st.error(f"❌ Error membaca CSV: {exc}")
 
         edited_lc = st.data_editor(
             st.session_state["df_lc"],
@@ -704,6 +702,54 @@ with tab_envelope:
                 delta=f"Pile {max_lat_pile}",
                 delta_color="off",
             )
+
+        # --- Envelope Visualizations ---
+        st.divider()
+        st.markdown("**Envelope Diagrams**")
+
+        # Axial Envelope Bar Chart
+        fig_env_axial = plot_envelope_axial(
+            df_envelope_display,
+            centroid,
+            show_labels=st.session_state["show_labels"],
+            unit=unit,
+        )
+        st.plotly_chart(
+            fig_env_axial,
+            width="stretch",
+            config={
+                "displayModeBar": True,
+                "toImageButtonOptions": {
+                    "format": "png",
+                    "filename": "envelope_axial",
+                    "height": 600,
+                    "width": 1200,
+                    "scale": 2,
+                },
+            },
+        )
+
+        # Lateral Envelope Bar Chart
+        fig_env_lateral = plot_envelope_lateral(
+            df_envelope_display,
+            centroid,
+            show_labels=st.session_state["show_labels"],
+            unit=unit,
+        )
+        st.plotly_chart(
+            fig_env_lateral,
+            width="stretch",
+            config={
+                "displayModeBar": True,
+                "toImageButtonOptions": {
+                    "format": "png",
+                    "filename": "envelope_lateral",
+                    "height": 600,
+                    "width": 1200,
+                    "scale": 2,
+                },
+            },
+        )
     else:
         st.info("📝 Masukkan data pada tab Input Data untuk melihat envelope.")
 

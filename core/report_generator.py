@@ -6,6 +6,7 @@ Temporary files handled via Python's `tempfile` module.
 """
 
 import os
+import shutil
 import tempfile
 from datetime import datetime
 
@@ -55,7 +56,7 @@ def _build_envelope_table(df_envelope: pd.DataFrame, unit: str) -> str:
     return f"""#table(
   columns: {n_cols},
   align: center + horizon,
-  fill: (col, row) => if row == 0 {{ rgb("1e293b") }} else if calc.odd(row) {{ rgb("f1f5f9") }} else {{ white }},
+  fill: (_, row) => if row == 0 {{ rgb("1e293b") }} else if calc.odd(row) {{ rgb("f1f5f9") }} else {{ white }},
   stroke: 0.5pt + rgb("94a3b8"),
   inset: 8pt,
 {table_content},
@@ -112,15 +113,15 @@ def generate_typst_report(
     pile_shape_text = params.get("pile_shape", "N/A")
     pile_dim_text = f"{params.get('pile_dim', 0):.3f} m"
 
-    # Build image includes
+    # Build image includes — use relative filenames only (images will
+    # be copied into the same temp dir as the .typ file)
     image_blocks = []
     for idx, img_path in enumerate(plot_image_paths):
-        # Use forward slashes for Typst
-        img_path_clean = img_path.replace("\\", "/")
+        img_name = os.path.basename(img_path)
         label = "Lateral Force Vectors" if idx == 0 else "Axial Force Distribution"
         image_blocks.append(f"""
 #figure(
-  image("{img_path_clean}", width: 100%),
+  image("{img_name}", width: 100%),
   caption: [{label}],
 )
 """)
@@ -129,6 +130,8 @@ def generate_typst_report(
 
     envelope_table = _build_envelope_table(df_envelope, unit)
 
+    # NOTE: Using a system font fallback chain so Typst does not fail
+    # if "Inter" is not installed on the build machine.
     report = f"""#set document(
   title: "Pile Forces Analysis Report",
   author: "Pile Forces Calculator",
@@ -138,11 +141,10 @@ def generate_typst_report(
   paper: "a4",
   margin: (top: 2.5cm, bottom: 2.5cm, left: 2cm, right: 2cm),
   header: align(right, text(size: 8pt, fill: rgb("64748b"))[Pile Forces Calculator — Generated Report]),
-  footer: align(center, text(size: 8pt, fill: rgb("64748b"))[Page #counter(page).display()]),
+  footer: context align(center, text(size: 8pt, fill: rgb("64748b"))[Page #counter(page).display()]),
 )
 
 #set text(
-  font: "Inter",
   size: 10pt,
   fill: rgb("1e293b"),
 )
@@ -170,7 +172,7 @@ def generate_typst_report(
 #table(
   columns: 2,
   align: (left, left),
-  fill: (col, row) => if calc.odd(row) {{ rgb("f1f5f9") }} else {{ white }},
+  fill: (_, row) => if calc.odd(row) {{ rgb("f1f5f9") }} else {{ white }},
   stroke: 0.5pt + rgb("94a3b8"),
   inset: 8pt,
   [*Parameter*], [*Value*],
@@ -218,32 +220,20 @@ def compile_report_to_pdf(
         return None
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        # Write main .typ file
-        typ_path = os.path.join(tmp_dir, "report.typ")
-
-        # If image paths are provided, copy or symlink them into temp dir
-        # and update references in the typst string
-        final_typst = typst_string
+        # Copy images into temp dir first
         if image_paths:
             for img_path in image_paths:
                 if os.path.exists(img_path):
                     img_name = os.path.basename(img_path)
                     dest_path = os.path.join(tmp_dir, img_name)
-                    # Copy image to temp directory
-                    import shutil
                     shutil.copy2(img_path, dest_path)
-                    # Update path in typst string to relative
-                    img_path_fwd = img_path.replace("\\", "/")
-                    final_typst = final_typst.replace(
-                        f'image("{img_path_fwd}"',
-                        f'image("{img_name}"',
-                    )
 
+        # Write main .typ file (image refs are already relative names)
+        typ_path = os.path.join(tmp_dir, "report.typ")
         with open(typ_path, "w", encoding="utf-8") as f:
-            f.write(final_typst)
+            f.write(typst_string)
 
         # Compile to PDF
-        pdf_path = os.path.join(tmp_dir, "report.pdf")
         try:
             pdf_bytes = typst.compile(typ_path)
             return pdf_bytes
