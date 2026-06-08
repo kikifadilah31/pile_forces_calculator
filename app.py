@@ -612,48 +612,44 @@ with tab_envelope:
         st.divider()
         st.markdown("**Envelope Diagrams**")
 
-        # Axial Envelope Bar Chart
-        fig_env_axial = plot_envelope_axial(
-            df_envelope_display,
-            centroid,
-            show_labels=st.session_state["show_labels"],
-            unit=unit,
+        # 1. Max Compression (Axial Bubble)
+        fig_env_comp = plot_envelope_axial(
+            df_envelope_display, centroid, env_type="Max",
+            show_labels=st.session_state["show_labels"], unit=unit,
         )
         st.plotly_chart(
-            fig_env_axial,
-            width="stretch",
-            config={
-                "displayModeBar": True,
-                "toImageButtonOptions": {
-                    "format": "png",
-                    "filename": "envelope_axial",
-                    "height": 600,
-                    "width": 1200,
-                    "scale": 2,
-                },
-            },
+            fig_env_comp, width="stretch",
+            config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "env_comp", "scale": 2}},
         )
 
-        # Lateral Envelope Bar Chart
-        fig_env_lateral = plot_envelope_lateral(
-            df_envelope_display,
-            centroid,
-            show_labels=st.session_state["show_labels"],
-            unit=unit,
+        # 2. Max Tension (Axial Bubble)
+        fig_env_tens = plot_envelope_axial(
+            df_envelope_display, centroid, env_type="Min",
+            show_labels=st.session_state["show_labels"], unit=unit,
         )
         st.plotly_chart(
-            fig_env_lateral,
-            width="stretch",
-            config={
-                "displayModeBar": True,
-                "toImageButtonOptions": {
-                    "format": "png",
-                    "filename": "envelope_lateral",
-                    "height": 600,
-                    "width": 1200,
-                    "scale": 2,
-                },
-            },
+            fig_env_tens, width="stretch",
+            config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "env_tens", "scale": 2}},
+        )
+
+        # 3. Max Lateral (Vector)
+        fig_env_lat_max = plot_envelope_lateral(
+            df_envelope_display, centroid, env_type="Max",
+            show_labels=st.session_state["show_labels"], unit=unit,
+        )
+        st.plotly_chart(
+            fig_env_lat_max, width="stretch",
+            config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "env_lat_max", "scale": 2}},
+        )
+
+        # 4. Min Lateral (Vector)
+        fig_env_lat_min = plot_envelope_lateral(
+            df_envelope_display, centroid, env_type="Min",
+            show_labels=st.session_state["show_labels"], unit=unit,
+        )
+        st.plotly_chart(
+            fig_env_lat_min, width="stretch",
+            config={"displayModeBar": True, "toImageButtonOptions": {"format": "png", "filename": "env_lat_min", "scale": 2}},
         )
     else:
         st.info("📝 Masukkan data pada tab Input Data untuk melihat envelope.")
@@ -697,6 +693,27 @@ with tab_report:
                             ax_path = os.path.join(tmp_dir, f"axial_{lc_id}.png")
                             export_figure_to_png(fig_ax, ax_path)
                             plot_paths.append((ax_path, f"Axial Force Distribution — LC: {lc_id}"))
+
+                        # Envelope Plots
+                        fig_env_comp = plot_envelope_axial(df_envelope_display, centroid, env_type="Max", unit=unit)
+                        env_comp_path = os.path.join(tmp_dir, "env_comp.png")
+                        export_figure_to_png(fig_env_comp, env_comp_path)
+                        plot_paths.append((env_comp_path, "Envelope — Max Axial Compression"))
+
+                        fig_env_tens = plot_envelope_axial(df_envelope_display, centroid, env_type="Min", unit=unit)
+                        env_tens_path = os.path.join(tmp_dir, "env_tens.png")
+                        export_figure_to_png(fig_env_tens, env_tens_path)
+                        plot_paths.append((env_tens_path, "Envelope — Max Axial Tension"))
+
+                        fig_env_lat_max = plot_envelope_lateral(df_envelope_display, centroid, env_type="Max", unit=unit)
+                        env_lat_max_path = os.path.join(tmp_dir, "env_lat_max.png")
+                        export_figure_to_png(fig_env_lat_max, env_lat_max_path)
+                        plot_paths.append((env_lat_max_path, "Envelope — Max Lateral Resultant"))
+
+                        fig_env_lat_min = plot_envelope_lateral(df_envelope_display, centroid, env_type="Min", unit=unit)
+                        env_lat_min_path = os.path.join(tmp_dir, "env_lat_min.png")
+                        export_figure_to_png(fig_env_lat_min, env_lat_min_path)
+                        plot_paths.append((env_lat_min_path, "Envelope — Min Lateral Resultant"))
 
                         # Generate Typst source
                         typst_src = generate_typst_report(

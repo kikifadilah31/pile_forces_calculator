@@ -20,37 +20,40 @@ _COLOR_TENSION = "rgba(59, 130, 246, 0.85)"          # cool blue
 _COLOR_CENTROID = "rgba(250, 204, 21, 1.0)"          # gold
 _COLOR_PILE_MARKER = "rgba(100, 116, 139, 0.8)"      # slate
 _COLOR_ARROW = "rgba(16, 185, 129, 0.9)"             # emerald
-_COLOR_BG = "rgba(15, 23, 42, 1.0)"                  # dark slate
-_COLOR_GRID = "rgba(51, 65, 85, 0.5)"                # subtle grid
+_COLOR_BG = "rgba(255, 255, 255, 1.0)"               # white
+_COLOR_GRID = "rgba(203, 213, 225, 0.5)"             # light slate grid
+_COLOR_TEXT = "rgba(15, 23, 42, 1.0)"                # dark text
+_COLOR_AXIS = "rgba(148, 163, 184, 0.8)"             # axis lines
 
 
 def _base_layout(title: str) -> dict:
-    """Shared dark-theme layout for all plots."""
+    """Shared light-theme layout for all plots."""
     return dict(
         title=dict(
             text=title,
-            font=dict(size=18, color="white", family="Inter, sans-serif"),
+            font=dict(size=18, color=_COLOR_TEXT, family="Inter, sans-serif"),
             x=0.5,
         ),
         paper_bgcolor=_COLOR_BG,
-        plot_bgcolor="rgba(30, 41, 59, 1.0)",
-        font=dict(color="white", family="Inter, sans-serif"),
+        plot_bgcolor="rgba(248, 250, 252, 1.0)",
+        font=dict(color=_COLOR_TEXT, family="Inter, sans-serif"),
         xaxis=dict(
             title="X (m)",
             scaleanchor="y",
             scaleratio=1,
             gridcolor=_COLOR_GRID,
-            zerolinecolor=_COLOR_GRID,
+            zerolinecolor=_COLOR_AXIS,
         ),
         yaxis=dict(
             title="Y (m)",
             gridcolor=_COLOR_GRID,
-            zerolinecolor=_COLOR_GRID,
+            zerolinecolor=_COLOR_AXIS,
         ),
         legend=dict(
-            bgcolor="rgba(30, 41, 59, 0.8)",
-            bordercolor="rgba(100, 116, 139, 0.5)",
+            bgcolor="rgba(255, 255, 255, 0.8)",
+            bordercolor="rgba(203, 213, 225, 1.0)",
             borderwidth=1,
+            font=dict(color=_COLOR_TEXT),
         ),
         margin=dict(l=60, r=40, t=60, b=60),
     )
@@ -149,10 +152,11 @@ def plot_lateral_vectors(
                 y=tip_y,
                 text=f"<b>{row['H_Resultant']:.1f}</b> {unit}",
                 showarrow=False,
-                font=dict(size=10, color=_COLOR_ARROW),
+                font=dict(size=10, color=_COLOR_TEXT),
                 xshift=10,
                 yshift=10,
-                bgcolor="rgba(15, 23, 42, 0.7)",
+                bgcolor="rgba(255, 255, 255, 0.7)",
+                bordercolor="rgba(148, 163, 184, 0.5)",
                 borderpad=2,
             ))
 
@@ -285,11 +289,12 @@ def plot_axial_bubbles(
                 text=f"<b>{row['Axial_Force']:.1f}</b>",
                 showarrow=False,
                 font=dict(
-                    size=9,
-                    color="white",
+                    size=10,
+                    color=_COLOR_TEXT,
                     family="Inter, sans-serif",
                 ),
-                bgcolor="rgba(0, 0, 0, 0.5)",
+                bgcolor="rgba(255, 255, 255, 0.7)",
+                bordercolor="rgba(148, 163, 184, 0.5)",
                 borderpad=2,
             ))
 
@@ -307,149 +312,173 @@ def plot_axial_bubbles(
 def plot_envelope_axial(
     df_envelope: pd.DataFrame,
     centroid: tuple[float, float],
+    env_type: str = "Max",
     show_labels: bool = True,
     unit: str = "kN",
 ) -> go.Figure:
-    """Create grouped bar chart showing Max Compression and Max Tension per pile.
+    """Create bubble plot for Envelope Axial Forces.
 
-    Parameters
-    ----------
-    df_envelope : Envelope DataFrame with columns
-        [Pile_ID, Max_Compression, LC_Max_Comp, Max_Tension, LC_Max_Tens, ...]
-    centroid : (x_c, y_c)
-    show_labels : whether to show values on bars
-    unit : display unit
+    env_type: "Max" (Max Compression) or "Min" (Max Tension)
     """
     fig = go.Figure()
 
-    pile_ids = df_envelope["Pile_ID"].astype(str).tolist()
+    col = "Max_Compression" if env_type == "Max" else "Max_Tension"
+    lc_col = "LC_Max_Comp" if env_type == "Max" else "LC_Max_Tens"
+    title_suffix = "Max Compression" if env_type == "Max" else "Max Tension"
+    
+    abs_force = df_envelope[col].abs()
+    max_force = abs_force.max() if abs_force.max() > 1e-6 else 1.0
 
-    # Max Compression bars (positive = compression)
-    fig.add_trace(go.Bar(
-        x=pile_ids,
-        y=df_envelope["Max_Compression"],
-        name="Max Compression",
-        marker=dict(
-            color="rgba(239, 68, 68, 0.85)",
-            line=dict(width=1, color="rgba(239, 68, 68, 1.0)"),
-        ),
-        text=[f"{v:.1f}" for v in df_envelope["Max_Compression"]] if show_labels else None,
-        textposition="outside",
-        textfont=dict(size=10, color="rgba(239, 68, 68, 1.0)"),
-        customdata=df_envelope["LC_Max_Comp"].values,
-        hovertemplate=(
-            "<b>Pile %{x}</b><br>"
-            "Max Compression: %{y:.2f} " + unit + "<br>"
-            "LC: %{customdata}<br>"
-            "<extra></extra>"
-        ),
-    ))
+    bubble_sizes = 15 + (abs_force / max_force) * 45
 
-    # Max Tension bars (negative = tension)
-    fig.add_trace(go.Bar(
-        x=pile_ids,
-        y=df_envelope["Max_Tension"],
-        name="Max Tension",
-        marker=dict(
-            color="rgba(59, 130, 246, 0.85)",
-            line=dict(width=1, color="rgba(59, 130, 246, 1.0)"),
-        ),
-        text=[f"{v:.1f}" for v in df_envelope["Max_Tension"]] if show_labels else None,
-        textposition="outside",
-        textfont=dict(size=10, color="rgba(59, 130, 246, 1.0)"),
-        customdata=df_envelope["LC_Max_Tens"].values,
-        hovertemplate=(
-            "<b>Pile %{x}</b><br>"
-            "Max Tension: %{y:.2f} " + unit + "<br>"
-            "LC: %{customdata}<br>"
-            "<extra></extra>"
-        ),
-    ))
-
-    layout = _base_layout(f"Envelope — Max Axial Forces ({unit})")
-    layout.update(
-        barmode="group",
-        xaxis=dict(
-            title="Pile ID",
-            gridcolor=_COLOR_GRID,
-            zerolinecolor=_COLOR_GRID,
-            scaleanchor=None,
-        ),
-        yaxis=dict(
-            title=f"Axial Force ({unit})",
-            gridcolor=_COLOR_GRID,
-            zerolinecolor="rgba(148, 163, 184, 0.6)",
-            zerolinewidth=2,
-        ),
+    # Determine colors
+    colors = np.where(
+        df_envelope[col].values >= 0,
+        _COLOR_COMPRESSION,
+        _COLOR_TENSION,
     )
 
-    # Add zero line annotation
+    fig.add_trace(go.Scatter(
+        x=df_envelope["X"] if "X" in df_envelope.columns else df_envelope["Pile_ID"].apply(lambda p: st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == p, "X"].values[0]),
+        y=df_envelope["Y"] if "Y" in df_envelope.columns else df_envelope["Pile_ID"].apply(lambda p: st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == p, "Y"].values[0]),
+        mode="markers",
+        marker=dict(
+            size=bubble_sizes,
+            color=colors,
+            line=dict(width=1.5, color="white"),
+            opacity=0.85,
+        ),
+        name=f"{title_suffix} Envelope",
+        customdata=np.column_stack([
+            df_envelope["Pile_ID"].values,
+            df_envelope[col].values,
+            df_envelope[lc_col].values,
+        ]),
+        hovertemplate=(
+            "<b>Pile %{customdata[0]}</b><br>"
+            "X: %{x:.3f} m<br>"
+            "Y: %{y:.3f} m<br>"
+            "Axial: %{customdata[1]:.2f} " + unit + "<br>"
+            "Gov. LC: %{customdata[2]}<br>"
+            "<extra></extra>"
+        ),
+    ))
+
+    # Centroid
+    fig.add_trace(go.Scatter(
+        x=[centroid[0]],
+        y=[centroid[1]],
+        mode="markers",
+        marker=dict(size=16, color=_COLOR_CENTROID, symbol="cross-thin", line=dict(width=2, color=_COLOR_CENTROID)),
+        name="Centroid",
+        hovertemplate="<b>Centroid</b><br>X: %{x:.3f}<br>Y: %{y:.3f}<extra></extra>",
+    ))
+
+    annotations = []
+    if show_labels:
+        # Hack to get X, Y since envelope doesn't store them natively
+        for i, row in df_envelope.iterrows():
+            px = df_envelope["X"].iloc[i] if "X" in df_envelope.columns else st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == row["Pile_ID"], "X"].values[0]
+            py = df_envelope["Y"].iloc[i] if "Y" in df_envelope.columns else st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == row["Pile_ID"], "Y"].values[0]
+            annotations.append(dict(
+                x=px,
+                y=py,
+                text=f"<b>{row[col]:.1f}</b>",
+                showarrow=False,
+                font=dict(size=10, color=_COLOR_TEXT, family="Inter, sans-serif"),
+                bgcolor="rgba(255, 255, 255, 0.7)",
+                bordercolor="rgba(148, 163, 184, 0.5)",
+                borderpad=2,
+            ))
+
+    layout = _base_layout(f"Envelope Axial — {title_suffix}")
+    layout["annotations"] = annotations
+
     fig.update_layout(**layout)
-
-    # Add horizontal line at zero for reference
-    fig.add_hline(
-        y=0, line_dash="dot",
-        line_color="rgba(148, 163, 184, 0.5)",
-        line_width=1,
-    )
-
     return fig
 
 
 def plot_envelope_lateral(
     df_envelope: pd.DataFrame,
     centroid: tuple[float, float],
+    env_type: str = "Max",
     show_labels: bool = True,
     unit: str = "kN",
 ) -> go.Figure:
-    """Create bar chart showing Max Lateral Resultant per pile.
+    """Create vector plot for Envelope Lateral Forces.
 
-    Parameters
-    ----------
-    df_envelope : Envelope DataFrame with columns
-        [Pile_ID, ..., Max_Lateral, LC_Max_Lat]
-    centroid : (x_c, y_c)
-    show_labels : whether to show values on bars
-    unit : display unit
+    env_type: "Max" (Max Lateral) or "Min" (Min Lateral)
     """
     fig = go.Figure()
 
-    pile_ids = df_envelope["Pile_ID"].astype(str).tolist()
+    res_col = "Max_Lateral" if env_type == "Max" else "Min_Lateral"
+    hx_col = "Max_Lat_Hx" if env_type == "Max" else "Min_Lat_Hx"
+    hy_col = "Max_Lat_Hy" if env_type == "Max" else "Min_Lat_Hy"
+    lc_col = "LC_Max_Lat" if env_type == "Max" else "LC_Min_Lat"
+    title_suffix = "Max Resultant" if env_type == "Max" else "Min Resultant"
 
-    fig.add_trace(go.Bar(
-        x=pile_ids,
-        y=df_envelope["Max_Lateral"],
-        name="Max Lateral",
-        marker=dict(
-            color="rgba(16, 185, 129, 0.85)",
-            line=dict(width=1, color="rgba(16, 185, 129, 1.0)"),
-        ),
-        text=[f"{v:.1f}" for v in df_envelope["Max_Lateral"]] if show_labels else None,
-        textposition="outside",
-        textfont=dict(size=10, color="rgba(16, 185, 129, 1.0)"),
-        customdata=df_envelope["LC_Max_Lat"].values,
-        hovertemplate=(
-            "<b>Pile %{x}</b><br>"
-            "Max Lateral: %{y:.2f} " + unit + "<br>"
-            "LC: %{customdata}<br>"
-            "<extra></extra>"
-        ),
+    # Pile markers
+    x_vals = df_envelope["X"] if "X" in df_envelope.columns else df_envelope["Pile_ID"].apply(lambda p: st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == p, "X"].values[0])
+    y_vals = df_envelope["Y"] if "Y" in df_envelope.columns else df_envelope["Pile_ID"].apply(lambda p: st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == p, "Y"].values[0])
+
+    fig.add_trace(go.Scatter(
+        x=x_vals,
+        y=y_vals,
+        mode="markers+text",
+        marker=dict(size=12, color=_COLOR_PILE_MARKER, symbol="square", line=dict(width=1.5, color="white")),
+        text=df_envelope["Pile_ID"].astype(str),
+        textposition="top center",
+        textfont=dict(size=10, color=_COLOR_TEXT),
+        name="Piles",
+        hovertemplate="<b>Pile %{text}</b><br>X: %{x:.3f} m<br>Y: %{y:.3f} m<br><extra></extra>",
     ))
 
-    layout = _base_layout(f"Envelope — Max Lateral Forces ({unit})")
-    layout.update(
-        xaxis=dict(
-            title="Pile ID",
-            gridcolor=_COLOR_GRID,
-            zerolinecolor=_COLOR_GRID,
-            scaleanchor=None,
-        ),
-        yaxis=dict(
-            title=f"Lateral Force ({unit})",
-            gridcolor=_COLOR_GRID,
-            zerolinecolor=_COLOR_GRID,
-        ),
-    )
+    # Centroid
+    fig.add_trace(go.Scatter(
+        x=[centroid[0]],
+        y=[centroid[1]],
+        mode="markers",
+        marker=dict(size=16, color=_COLOR_CENTROID, symbol="cross-thin", line=dict(width=2, color=_COLOR_CENTROID)),
+        name="Centroid",
+        hovertemplate="<b>Centroid</b><br>X: %{x:.3f}<br>Y: %{y:.3f}<extra></extra>",
+    ))
+
+    # Vector Arrows
+    max_h = df_envelope[res_col].max()
+    x_range = x_vals.max() - x_vals.min()
+    y_range = y_vals.max() - y_vals.min()
+    plot_span = max(x_range, y_range, 1.0)
+    scale = (plot_span * 0.3) / max(max_h, 1e-6)
+
+    annotations = []
+    for i, row in df_envelope.iterrows():
+        px = x_vals.iloc[i]
+        py = y_vals.iloc[i]
+        dx = row[hx_col] * scale
+        dy = row[hy_col] * scale
+        tip_x = px + dx
+        tip_y = py + dy
+
+        annotations.append(dict(
+            x=tip_x, y=tip_y, ax=px, ay=py,
+            xref="x", yref="y", axref="x", ayref="y",
+            showarrow=True, arrowhead=3, arrowsize=1.5, arrowwidth=2.5, arrowcolor=_COLOR_ARROW,
+        ))
+
+        if show_labels and row[res_col] > 1e-6:
+            annotations.append(dict(
+                x=tip_x, y=tip_y,
+                text=f"<b>{row[res_col]:.1f}</b> {unit}",
+                showarrow=False,
+                font=dict(size=10, color=_COLOR_TEXT),
+                xshift=10, yshift=10,
+                bgcolor="rgba(255, 255, 255, 0.7)",
+                bordercolor="rgba(148, 163, 184, 0.5)",
+                borderpad=2,
+            ))
+
+    layout = _base_layout(f"Envelope Lateral Vectors — {title_suffix}")
+    layout["annotations"] = annotations
 
     fig.update_layout(**layout)
     return fig

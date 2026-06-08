@@ -320,15 +320,23 @@ def build_envelope(df_master: pd.DataFrame) -> pd.DataFrame:
 
     # Max Lateral = maximum H_Resultant
     idx_max_lat = grouped["H_Resultant"].idxmax()
-    max_lat = df_master.loc[idx_max_lat, ["Pile_ID", "H_Resultant", "LC_ID"]].rename(
-        columns={"H_Resultant": "Max_Lateral", "LC_ID": "LC_Max_Lat"},
+    max_lat = df_master.loc[idx_max_lat, ["Pile_ID", "H_Resultant", "Hx", "Hy", "LC_ID"]].rename(
+        columns={"H_Resultant": "Max_Lateral", "Hx": "Max_Lat_Hx", "Hy": "Max_Lat_Hy", "LC_ID": "LC_Max_Lat"},
+    )
+
+    # Min Lateral = minimum H_Resultant
+    idx_min_lat = grouped["H_Resultant"].idxmin()
+    min_lat = df_master.loc[idx_min_lat, ["Pile_ID", "H_Resultant", "Hx", "Hy", "LC_ID"]].rename(
+        columns={"H_Resultant": "Min_Lateral", "Hx": "Min_Lat_Hx", "Hy": "Min_Lat_Hy", "LC_ID": "LC_Min_Lat"},
     )
 
     # Merge all envelopes
     envelope = max_comp.merge(
         max_tens[["Pile_ID", "Max_Tension", "LC_Max_Tens"]], on="Pile_ID",
     ).merge(
-        max_lat[["Pile_ID", "Max_Lateral", "LC_Max_Lat"]], on="Pile_ID",
+        max_lat[["Pile_ID", "Max_Lateral", "Max_Lat_Hx", "Max_Lat_Hy", "LC_Max_Lat"]], on="Pile_ID",
+    ).merge(
+        min_lat[["Pile_ID", "Min_Lateral", "Min_Lat_Hx", "Min_Lat_Hy", "LC_Min_Lat"]], on="Pile_ID",
     )
 
     return envelope.reset_index(drop=True)
@@ -349,7 +357,11 @@ def convert_units(df: pd.DataFrame, unit: str) -> pd.DataFrame:
     existing_force_cols = [col for col in force_cols if col in df.columns]
 
     # Also handle envelope columns
-    envelope_cols = ["Max_Compression", "Max_Tension", "Max_Lateral"]
+    envelope_cols = [
+        "Max_Compression", "Max_Tension", 
+        "Max_Lateral", "Max_Lat_Hx", "Max_Lat_Hy",
+        "Min_Lateral", "Min_Lat_Hx", "Min_Lat_Hy"
+    ]
     existing_envelope_cols = [col for col in envelope_cols if col in df.columns]
 
     all_cols = existing_force_cols + existing_envelope_cols
