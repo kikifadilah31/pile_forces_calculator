@@ -665,6 +665,12 @@ with tab_report:
             "methodology, visualizations, and governing load case table."
         )
 
+        report_title = st.text_input(
+            "Custom Report Title",
+            value="Pile Forces Analysis Report",
+            help="This title will be displayed on the first page of the PDF report."
+        )
+
         if st.button("🔄 Generate PDF Report", type="primary", width="stretch"):
             with st.spinner("Generating report..."):
                 try:
@@ -721,6 +727,7 @@ with tab_report:
                             params,
                             plot_paths,
                             unit=unit,
+                            report_title=report_title,
                         )
 
                         # Compile to PDF
@@ -753,7 +760,7 @@ with tab_report:
 st.divider()
 st.markdown(
     "<p style='text-align: center; color: #64748b; font-size: 0.8rem;'>"
-    "Pile Forces Calculator v0.0 — Built with Streamlit & Python"
+    "Pile Forces Calculator v0.1 — Built with Streamlit & Python"
     "</p>",
     unsafe_allow_html=True,
 )

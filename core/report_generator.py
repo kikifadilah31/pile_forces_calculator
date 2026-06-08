@@ -93,6 +93,7 @@ def generate_typst_report(
     params: dict,
     plot_image_paths: list[tuple[str, str]],
     unit: str = "kN",
+    report_title: str = "Pile Forces Analysis Report",
 ) -> str:
     """Generate a Typst markup string for the analysis report.
 
@@ -132,7 +133,7 @@ def generate_typst_report(
     # NOTE: Using a system font fallback chain so Typst does not fail
     # if "Inter" is not installed on the build machine.
     report = f"""#set document(
-  title: "Pile Forces Analysis Report",
+  title: "{_escape_typst(report_title)}",
   author: "Pile Forces Calculator",
 )
 
@@ -158,7 +159,7 @@ def generate_typst_report(
     radius: 8pt,
     inset: 24pt,
   )[
-    #text(size: 22pt, weight: "bold", fill: white)[Pile Forces Analysis Report]
+    #text(size: 22pt, weight: "bold", fill: white)[{_escape_typst(report_title)}]
     #v(8pt)
     #text(size: 11pt, fill: rgb("94a3b8"))[Generated: {date_str}]
   ]
