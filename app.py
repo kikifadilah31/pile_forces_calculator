@@ -230,7 +230,7 @@ with st.sidebar:
             data=json_str,
             file_name="pile_design_state.json",
             mime="application/json",
-            use_container_width=True,
+            width="stretch",
         )
 
     with col_load:
@@ -404,7 +404,7 @@ with tab_input:
         edited_piles = st.data_editor(
             st.session_state["df_piles"],
             num_rows="dynamic",
-            use_container_width=True,
+            width="stretch",
             key="editor_piles",
         )
         st.session_state["df_piles"] = edited_piles
@@ -431,7 +431,7 @@ with tab_input:
         edited_lc = st.data_editor(
             st.session_state["df_lc"],
             num_rows="dynamic",
-            use_container_width=True,
+            width="stretch",
             key="editor_lc",
         )
         st.session_state["df_lc"] = edited_lc
@@ -530,7 +530,7 @@ with tab_results:
                 "Axial_Force": "{:.2f}", "Hx": "{:.2f}",
                 "Hy": "{:.2f}", "H_Resultant": "{:.2f}",
             }),
-            use_container_width=True,
+            width="stretch",
             height=400,
         )
 
@@ -581,7 +581,7 @@ with tab_lateral:
 
         st.plotly_chart(
             fig_lateral,
-            use_container_width=True,
+            width="stretch",
             config={
                 "displayModeBar": True,
                 "toImageButtonOptions": {
@@ -619,7 +619,7 @@ with tab_axial:
 
         st.plotly_chart(
             fig_axial,
-            use_container_width=True,
+            width="stretch",
             config={
                 "displayModeBar": True,
                 "toImageButtonOptions": {
@@ -655,7 +655,7 @@ with tab_envelope:
                 col: "{:.2f}" for col in ["Max_Compression", "Max_Tension", "Max_Lateral"]
                 if col in df_envelope_display.columns
             }),
-            use_container_width=True,
+            width="stretch",
         )
 
         # CSV Download
@@ -718,7 +718,7 @@ with tab_report:
             "methodology, visualizations, and governing load case table."
         )
 
-        if st.button("🔄 Generate PDF Report", type="primary", use_container_width=True):
+        if st.button("🔄 Generate PDF Report", type="primary", width="stretch"):
             with st.spinner("Generating report..."):
                 try:
                     # Export plots to temp PNG files
@@ -763,7 +763,7 @@ with tab_report:
                                 data=pdf_bytes,
                                 file_name="Pile_Analysis_Report.pdf",
                                 mime="application/pdf",
-                                use_container_width=True,
+                                width="stretch",
                             )
                         else:
                             st.warning(
