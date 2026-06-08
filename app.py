@@ -49,98 +49,7 @@ st.set_page_config(
 )
 
 
-# ---------------------------------------------------------------------------
-# Custom CSS
-# ---------------------------------------------------------------------------
-
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-    /* Global font */
-    html, body, [class*="st-"] {
-        font-family: 'Inter', sans-serif;
-    }
-
-    /* Header styling */
-    .main-header {
-        background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%);
-        padding: 1.5rem 2rem;
-        border-radius: 12px;
-        margin-bottom: 1.5rem;
-        border: 1px solid rgba(100, 116, 139, 0.3);
-    }
-    .main-header h1 {
-        color: #f8fafc;
-        font-size: 1.8rem;
-        font-weight: 700;
-        margin: 0;
-    }
-    .main-header p {
-        color: #94a3b8;
-        font-size: 0.9rem;
-        margin: 0.3rem 0 0 0;
-    }
-
-    /* Sidebar styling */
-    section[data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
-    }
-    section[data-testid="stSidebar"] .stMarkdown h3 {
-        color: #e2e8f0;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        border-bottom: 1px solid rgba(100, 116, 139, 0.3);
-        padding-bottom: 0.4rem;
-    }
-
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 4px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 8px 8px 0 0;
-        padding: 8px 20px;
-        font-weight: 500;
-    }
-
-    /* Data editor */
-    .stDataFrame {
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    /* Download buttons */
-    .stDownloadButton > button {
-        background: linear-gradient(135deg, #10b981, #059669);
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-weight: 600;
-        transition: all 0.2s ease;
-    }
-    .stDownloadButton > button:hover {
-        background: linear-gradient(135deg, #059669, #047857);
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
-    }
-
-    /* Metric cards */
-    [data-testid="stMetric"] {
-        background: linear-gradient(135deg, #1e293b, #334155);
-        border: 1px solid rgba(100, 116, 139, 0.3);
-        border-radius: 10px;
-        padding: 12px 16px;
-    }
-    [data-testid="stMetricValue"] {
-        color: #f8fafc;
-    }
-    [data-testid="stMetricLabel"] {
-        color: #94a3b8;
-    }
-</style>
-""", unsafe_allow_html=True)
+# (Native Streamlit theme used)
 
 
 # ---------------------------------------------------------------------------
@@ -351,12 +260,8 @@ with st.sidebar:
 # Header
 # ---------------------------------------------------------------------------
 
-st.markdown("""
-<div class="main-header">
-    <h1>🏗️ Pile Forces Calculator</h1>
-    <p>Automated distribution of structural reaction forces into individual pile foundation forces</p>
-</div>
-""", unsafe_allow_html=True)
+st.title("🏗️ Pile Forces Calculator")
+st.markdown("Automated distribution of structural reaction forces into individual pile foundation forces")
 
 
 # ---------------------------------------------------------------------------
@@ -771,25 +676,27 @@ with tab_report:
                     with tempfile.TemporaryDirectory() as tmp_dir:
                         plot_paths = []
 
-                        # Lateral vectors (use first LC)
-                        first_lc = df_master["LC_ID"].unique()[0]
-                        df_lat_first = df_master[df_master["LC_ID"] == first_lc]
-                        fig_lat = plot_lateral_vectors(
-                            df_lat_first, centroid,
-                            show_labels=True, unit=unit,
-                        )
-                        lat_path = os.path.join(tmp_dir, "lateral_vectors.png")
-                        export_figure_to_png(fig_lat, lat_path)
-                        plot_paths.append(lat_path)
+                        # Generate plots for all load cases
+                        for lc_id in df_master["LC_ID"].unique():
+                            df_lc_subset = df_master[df_master["LC_ID"] == lc_id]
 
-                        # Axial bubbles (use first LC)
-                        fig_ax = plot_axial_bubbles(
-                            df_lat_first, centroid,
-                            show_labels=True, unit=unit,
-                        )
-                        ax_path = os.path.join(tmp_dir, "axial_bubbles.png")
-                        export_figure_to_png(fig_ax, ax_path)
-                        plot_paths.append(ax_path)
+                            # Lateral vectors
+                            fig_lat = plot_lateral_vectors(
+                                df_lc_subset, centroid,
+                                show_labels=True, unit=unit,
+                            )
+                            lat_path = os.path.join(tmp_dir, f"lateral_{lc_id}.png")
+                            export_figure_to_png(fig_lat, lat_path)
+                            plot_paths.append((lat_path, f"Lateral Force Vectors — LC: {lc_id}"))
+
+                            # Axial bubbles
+                            fig_ax = plot_axial_bubbles(
+                                df_lc_subset, centroid,
+                                show_labels=True, unit=unit,
+                            )
+                            ax_path = os.path.join(tmp_dir, f"axial_{lc_id}.png")
+                            export_figure_to_png(fig_ax, ax_path)
+                            plot_paths.append((ax_path, f"Axial Force Distribution — LC: {lc_id}"))
 
                         # Generate Typst source
                         typst_src = generate_typst_report(

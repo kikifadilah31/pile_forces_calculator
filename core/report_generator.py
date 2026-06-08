@@ -91,7 +91,7 @@ Where $I_("polar") = sum x_i^2 + sum y_i^2$
 def generate_typst_report(
     df_envelope: pd.DataFrame,
     params: dict,
-    plot_image_paths: list[str],
+    plot_image_paths: list[tuple[str, str]],
     unit: str = "kN",
 ) -> str:
     """Generate a Typst markup string for the analysis report.
@@ -100,7 +100,7 @@ def generate_typst_report(
     ----------
     df_envelope : Envelope DataFrame with governing load cases
     params : dict with all design parameters
-    plot_image_paths : list of absolute paths to PNG plot images
+    plot_image_paths : list of tuples (absolute_path, caption) for PNG plot images
     unit : output unit (kN or Ton)
 
     Returns
@@ -116,9 +116,8 @@ def generate_typst_report(
     # Build image includes — use relative filenames only (images will
     # be copied into the same temp dir as the .typ file)
     image_blocks = []
-    for idx, img_path in enumerate(plot_image_paths):
+    for img_path, label in plot_image_paths:
         img_name = os.path.basename(img_path)
-        label = "Lateral Force Vectors" if idx == 0 else "Axial Force Distribution"
         image_blocks.append(f"""
 #figure(
   image("{img_name}", width: 100%),
@@ -209,7 +208,7 @@ The following table shows the extreme forces for each pile and the corresponding
 
 def compile_report_to_pdf(
     typst_string: str,
-    image_paths: list[str] | None = None,
+    image_paths: list[tuple[str, str]] | None = None,
 ) -> bytes | None:
     """Compile Typst markup into PDF bytes.
 
@@ -222,7 +221,7 @@ def compile_report_to_pdf(
     with tempfile.TemporaryDirectory() as tmp_dir:
         # Copy images into temp dir first
         if image_paths:
-            for img_path in image_paths:
+            for img_path, _ in image_paths:
                 if os.path.exists(img_path):
                     img_name = os.path.basename(img_path)
                     dest_path = os.path.join(tmp_dir, img_name)
