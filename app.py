@@ -673,8 +673,8 @@ with tab_report:
                         plot_paths = []
 
                         # Generate plots for all load cases
-                        for lc_id in df_master["LC_ID"].unique():
-                            df_lc_subset = df_master[df_master["LC_ID"] == lc_id]
+                        for lc_id in df_master_display["LC_ID"].unique():
+                            df_lc_subset = df_master_display[df_master_display["LC_ID"] == lc_id]
 
                             # Lateral vectors
                             fig_lat = plot_lateral_vectors(
