@@ -192,6 +192,9 @@ def generate_typst_report(
 
 {images_section}
 
+#pagebreak()
+#set page(flipped: true)
+
 = Governing Load Cases (Envelope)
 
 The following table shows the extreme forces for each pile and the corresponding governing load cases:
