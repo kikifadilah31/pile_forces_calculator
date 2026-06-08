@@ -308,7 +308,7 @@ def build_envelope(df_master: pd.DataFrame) -> pd.DataFrame:
 
     # Max Compression = maximum positive Axial_Force
     idx_max_comp = grouped["Axial_Force"].idxmax()
-    max_comp = df_master.loc[idx_max_comp, ["Pile_ID", "Axial_Force", "LC_ID"]].rename(
+    max_comp = df_master.loc[idx_max_comp, ["Pile_ID", "X", "Y", "Axial_Force", "LC_ID"]].rename(
         columns={"Axial_Force": "Max_Compression", "LC_ID": "LC_Max_Comp"},
     )
 

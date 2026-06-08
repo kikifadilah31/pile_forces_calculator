@@ -43,11 +43,17 @@ def _base_layout(title: str) -> dict:
             scaleratio=1,
             gridcolor=_COLOR_GRID,
             zerolinecolor=_COLOR_AXIS,
+            showgrid=True,
+            tickfont=dict(color=_COLOR_TEXT),
+            titlefont=dict(color=_COLOR_TEXT),
         ),
         yaxis=dict(
             title="Y (m)",
             gridcolor=_COLOR_GRID,
             zerolinecolor=_COLOR_AXIS,
+            showgrid=True,
+            tickfont=dict(color=_COLOR_TEXT),
+            titlefont=dict(color=_COLOR_TEXT),
         ),
         legend=dict(
             bgcolor="rgba(255, 255, 255, 0.8)",
@@ -339,8 +345,8 @@ def plot_envelope_axial(
     )
 
     fig.add_trace(go.Scatter(
-        x=df_envelope["X"] if "X" in df_envelope.columns else df_envelope["Pile_ID"].apply(lambda p: st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == p, "X"].values[0]),
-        y=df_envelope["Y"] if "Y" in df_envelope.columns else df_envelope["Pile_ID"].apply(lambda p: st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == p, "Y"].values[0]),
+        x=df_envelope["X"],
+        y=df_envelope["Y"],
         mode="markers",
         marker=dict(
             size=bubble_sizes,
@@ -376,10 +382,9 @@ def plot_envelope_axial(
 
     annotations = []
     if show_labels:
-        # Hack to get X, Y since envelope doesn't store them natively
         for i, row in df_envelope.iterrows():
-            px = df_envelope["X"].iloc[i] if "X" in df_envelope.columns else st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == row["Pile_ID"], "X"].values[0]
-            py = df_envelope["Y"].iloc[i] if "Y" in df_envelope.columns else st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == row["Pile_ID"], "Y"].values[0]
+            px = row["X"]
+            py = row["Y"]
             annotations.append(dict(
                 x=px,
                 y=py,
@@ -418,8 +423,8 @@ def plot_envelope_lateral(
     title_suffix = "Max Resultant" if env_type == "Max" else "Min Resultant"
 
     # Pile markers
-    x_vals = df_envelope["X"] if "X" in df_envelope.columns else df_envelope["Pile_ID"].apply(lambda p: st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == p, "X"].values[0])
-    y_vals = df_envelope["Y"] if "Y" in df_envelope.columns else df_envelope["Pile_ID"].apply(lambda p: st.session_state["df_piles"].loc[st.session_state["df_piles"]["Pile_ID"] == p, "Y"].values[0])
+    x_vals = df_envelope["X"]
+    y_vals = df_envelope["Y"]
 
     fig.add_trace(go.Scatter(
         x=x_vals,
