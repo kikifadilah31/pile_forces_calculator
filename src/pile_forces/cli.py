@@ -101,19 +101,19 @@ def _configure_logging(run_dir: str) -> logging.FileHandler:
 # Rendering + reporting
 # ---------------------------------------------------------------------------
 
-def _render_all_plots(df_master_disp, df_env_disp, centroid, run_dir, show_labels, unit):
+def _render_all_plots(df_master_disp, df_env_disp, centroid, run_dir, show_labels, unit, pile_shape, pile_dim):
     plots_dir = os.path.join(run_dir, "plots")
     plot_paths: list[tuple[str, str]] = []
 
     for lc_id in df_master_disp["LC_ID"].unique():
         subset = df_master_disp[df_master_disp["LC_ID"] == lc_id]
 
-        fig_lat = renderer.plot_lateral_vectors(subset, centroid, show_labels, unit)
+        fig_lat = renderer.plot_lateral_vectors(subset, centroid, show_labels, unit, pile_shape, pile_dim)
         p_lat = os.path.join(plots_dir, f"lateral_{lc_id}.png")
         renderer.save_figure(fig_lat, p_lat)
         plot_paths.append((p_lat, f"Lateral Force Vectors — LC: {lc_id}"))
 
-        fig_ax = renderer.plot_axial_bubbles(subset, centroid, show_labels, unit)
+        fig_ax = renderer.plot_axial_bubbles(subset, centroid, show_labels, unit, pile_shape, pile_dim)
         p_ax = os.path.join(plots_dir, f"axial_{lc_id}.png")
         renderer.save_figure(fig_ax, p_ax)
         plot_paths.append((p_ax, f"Axial Force Distribution — LC: {lc_id}"))
@@ -126,7 +126,10 @@ def _render_all_plots(df_master_disp, df_env_disp, centroid, run_dir, show_label
         (renderer.plot_envelope_lateral, "Min", "env_min_lateral.png", "Envelope — Min Lateral Resultant"),
     ]
     for fn, env_type, fname, caption in envelope_specs:
-        fig = fn(df_env_disp, centroid, env_type=env_type, show_labels=show_labels, unit=unit)
+        fig = fn(
+            df_env_disp, centroid, env_type=env_type, show_labels=show_labels,
+            unit=unit, pile_shape=pile_shape, pile_dim=pile_dim,
+        )
         path = os.path.join(plots_dir, fname)
         renderer.save_figure(fig, path)
         plot_paths.append((path, caption))
@@ -181,7 +184,10 @@ def run(args: argparse.Namespace) -> int:
         logger.info("Wrote master_output.csv and envelope.csv")
 
         # --- Plots ---
-        plot_paths = _render_all_plots(df_master_disp, df_env_disp, centroid, run_dir, show_labels, unit)
+        plot_paths = _render_all_plots(
+            df_master_disp, df_env_disp, centroid, run_dir, show_labels, unit,
+            params["pile_shape"], params["pile_dim"],
+        )
 
         # --- Summary + report ---
         reporter.write_summary_md(run_dir, df_env_disp, params, unit, __version__)

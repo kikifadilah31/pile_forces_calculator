@@ -77,12 +77,17 @@ OUTPUT_DPI = 300
 FIGSIZE = (10.0, 8.0)          # inches
 PLOT_GRID_DTICK = 0.5          # grid interval (m), matches Streamlit plots
 
+# Matplotlib marker per pile shape — plotted pile markers reflect real geometry.
+PILE_SHAPE_MARKERS = {"Circle": "o", "Square": "s"}
+LEGEND_MARKER_SIZE = 10        # fixed legend swatch size (points), independent of bubble data size
+
 # --- Plot palette (mirrors the Plotly frontend) ---
 COLOR_COMPRESSION = "#ef4444"  # warm red   — positive axial (compression)
 COLOR_TENSION = "#3b82f6"      # cool blue  — negative axial (tension)
 COLOR_CENTROID = "#facc15"     # gold cross — group centroid
 COLOR_PILE_MARKER = "#64748b"  # slate      — plain pile marker
 COLOR_ARROW = "#10b981"        # emerald    — lateral force vectors
+COLOR_PILE_OUTLINE = "#1d4ed8" # blue       — dashed true-scale pile footprint (diameter/side)
 COLOR_GRID = "#cbd5e1"
 COLOR_TEXT = "#0f172a"
 

@@ -16,11 +16,15 @@ import pytest
 from pile_forces import __version__, config
 from pile_forces.cli import main
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GOLDEN = os.path.join(ROOT, "tests", "golden")
-PILES = os.path.join(ROOT, "input", "piles.csv")
-LC = os.path.join(ROOT, "input", "load_cases.csv")
-PARAMS = os.path.join(ROOT, "input", "params.json")
+# V&V uses dedicated, locked fixtures under tests/data — NOT the user-editable
+# input/ samples — so editing real project data never breaks the golden tests.
+TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+GOLDEN = os.path.join(TESTS_DIR, "golden")
+DATA = os.path.join(TESTS_DIR, "data")
+PILES = os.path.join(DATA, "piles.csv")
+LC = os.path.join(DATA, "load_cases.csv")
+PARAMS = os.path.join(DATA, "params.json")
+N_LOAD_CASES = 3  # fixtures contain LC1..LC3
 
 
 def _latest_run(parent: str) -> str:
@@ -42,8 +46,8 @@ def test_expected_artifacts_exist(run_dir):
     for rel in ["run_manifest.json", "run.log", "master_output.csv", "envelope.csv", "SUMMARY.md"]:
         assert os.path.isfile(os.path.join(run_dir, rel)), f"missing {rel}"
     plots = os.listdir(os.path.join(run_dir, "plots"))
-    # 2 plots per LC (3 LCs) + 4 envelope plots
-    assert len(plots) == 3 * 2 + 4
+    # 2 plots per LC + 4 envelope plots
+    assert len(plots) == N_LOAD_CASES * 2 + 4
 
 
 def test_manifest_is_populated(run_dir):

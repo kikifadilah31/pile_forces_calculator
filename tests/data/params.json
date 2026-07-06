@@ -1,0 +1,16 @@
+{
+  "pilecap_length": 5.0,
+  "pilecap_width": 5.0,
+  "pilecap_height": 1.5,
+  "gamma_concrete": 24.0,
+  "soil_height": 1.0,
+  "gamma_soil": 18.0,
+  "pile_shape": "Circle",
+  "pile_dim": 0.6,
+  "pile_length": 20.0,
+  "gamma_pile": 24.0,
+  "centroid_mode": "Auto",
+  "x_centroid": 0.0,
+  "y_centroid": 0.0,
+  "output_unit": "kN"
+}
