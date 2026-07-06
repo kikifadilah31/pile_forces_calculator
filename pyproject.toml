@@ -1,13 +1,44 @@
 [project]
 name = "pile-forces-calculator"
-version = "0.0.0"
-description = "Pile Forces Calculator Dashboard - Distributes structural reaction forces into individual pile foundation forces"
+version = "0.2.0"
+description = "Pile Forces Calculator — distributes structural reaction forces into individual pile foundation forces (Streamlit app + CLI)"
 requires-python = ">=3.11"
 dependencies = [
-    "streamlit>=1.30",
-    "pandas>=2.0",
     "numpy>=1.24",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
     "plotly>=5.18",
     "kaleido>=0.2.1",
     "typst>=0.12",
+    "streamlit>=1.30",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
+[project.scripts]
+pile-forces = "pile_forces.cli:entry_point"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pile_forces"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]  # line length enforced softly; long f-strings in reporter/config
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+files = ["src/pile_forces"]

@@ -17,3 +17,6 @@ Thumbs.db
 # Temp files
 *.tmp
 *.bak
+
+# CLI run outputs (timestamped, never committed)
+output/

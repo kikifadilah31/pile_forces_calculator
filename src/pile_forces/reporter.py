@@ -1,8 +1,9 @@
 """
-Typst-based PDF report generator for pile force analysis.
+Typst-based PDF report generator + auditable Markdown summary.
 
-Uses the `typst` Python package to compile .typ markup into PDF.
-Temporary files handled via Python's `tempfile` module.
+Uses the `typst` Python package to compile .typ markup into PDF. Temporary
+files are handled via Python's `tempfile` module. The report embeds the
+matplotlib PNGs produced by `renderer` and the governing-load-case envelope.
 """
 
 import os
@@ -14,34 +15,26 @@ import pandas as pd
 
 try:
     import typst
-except ImportError:
-    typst = None
+except ImportError:  # pragma: no cover — optional dependency
+    typst = None  # type: ignore[assignment]
 
 
 def _escape_typst(text: str) -> str:
     """Escape special Typst characters in text strings."""
     replacements = {
-        "#": "\\#",
-        "$": "\\$",
-        "@": "\\@",
-        "_": "\\_",
-        "~": "\\~",
+        "#": "\\#", "$": "\\$", "@": "\\@", "_": "\\_", "~": "\\~",
     }
     for char, escaped in replacements.items():
         text = text.replace(char, escaped)
     return text
 
 
-def _build_envelope_table(df_envelope: pd.DataFrame, unit: str) -> str:
+def _build_envelope_table(df_envelope: pd.DataFrame) -> str:
     """Build a Typst table from the envelope DataFrame."""
     n_cols = len(df_envelope.columns)
 
-    # Header row
-    headers = []
-    for col in df_envelope.columns:
-        headers.append(f'  [#text(white)[*{_escape_typst(str(col))}*]]')
+    headers = [f'  [#text(white)[*{_escape_typst(str(col))}*]]' for col in df_envelope.columns]
 
-    # Data rows
     data_rows = []
     for _, row in df_envelope.iterrows():
         for col in df_envelope.columns:
@@ -99,39 +92,30 @@ def generate_typst_report(
 
     Parameters
     ----------
-    df_envelope : Envelope DataFrame with governing load cases
+    df_envelope : envelope DataFrame with governing load cases
     params : dict with all design parameters
-    plot_image_paths : list of tuples (absolute_path, caption) for PNG plot images
+    plot_image_paths : list of (absolute_path, caption) for PNG plot images
     unit : output unit (kN or Ton)
-
-    Returns
-    -------
-    Complete Typst document string
+    report_title : title on the first page
     """
     date_str = datetime.now().strftime("%d %B %Y")
 
-    # Parameter summary
     pile_shape_text = params.get("pile_shape", "N/A")
     pile_dim_text = f"{params.get('pile_dim', 0):.3f} m"
 
-    # Build image includes — use relative filenames only (images will
-    # be copied into the same temp dir as the .typ file)
     image_blocks = []
     for img_path, label in plot_image_paths:
         img_name = os.path.basename(img_path)
         image_blocks.append(f"""
 #figure(
   image("{img_name}", width: 100%),
-  caption: [{label}],
+  caption: [{_escape_typst(label)}],
 )
 """)
-
     images_section = "\n".join(image_blocks) if image_blocks else ""
 
-    envelope_table = _build_envelope_table(df_envelope, unit)
+    envelope_table = _build_envelope_table(df_envelope)
 
-    # NOTE: Using a system font fallback chain so Typst does not fail
-    # if "Inter" is not installed on the build machine.
     report = f"""#set document(
   title: "{_escape_typst(report_title)}",
   author: "Pile Forces Calculator",
@@ -217,29 +201,89 @@ def compile_report_to_pdf(
 ) -> bytes | None:
     """Compile Typst markup into PDF bytes.
 
-    Uses Python's tempfile for intermediate files.
-    Returns PDF bytes or None if typst is not available.
+    Returns PDF bytes, or None if the `typst` package is not installed.
     """
     if typst is None:
         return None
 
     with tempfile.TemporaryDirectory() as tmp_dir:
-        # Copy images into temp dir first
         if image_paths:
             for img_path, _ in image_paths:
                 if os.path.exists(img_path):
-                    img_name = os.path.basename(img_path)
-                    dest_path = os.path.join(tmp_dir, img_name)
-                    shutil.copy2(img_path, dest_path)
+                    shutil.copy2(img_path, os.path.join(tmp_dir, os.path.basename(img_path)))
 
-        # Write main .typ file (image refs are already relative names)
         typ_path = os.path.join(tmp_dir, "report.typ")
-        with open(typ_path, "w", encoding="utf-8") as f:
-            f.write(typst_string)
+        with open(typ_path, "w", encoding="utf-8") as fh:
+            fh.write(typst_string)
 
-        # Compile to PDF
         try:
-            pdf_bytes = typst.compile(typ_path)
-            return pdf_bytes
-        except Exception as exc:
+            return typst.compile(typ_path)
+        except Exception as exc:  # noqa: BLE001 — re-raise with context
             raise RuntimeError(f"Typst compilation failed: {exc}") from exc
+
+
+def write_summary_md(
+    out_dir: str,
+    df_envelope: pd.DataFrame,
+    params: dict,
+    unit: str,
+    tool_version: str,
+) -> str:
+    """Write an auditable SUMMARY.md (Core 4/8). Returns the file path.
+
+    Shows governing values per pile and the intermediate self-weights so the
+    result can be traced, not just a pass/fail.
+    """
+    from . import math_engine  # local import to avoid cycle at module load
+
+    w_pilecap = math_engine.calc_pilecap_weight(
+        params["pilecap_length"], params["pilecap_width"],
+        params["pilecap_height"], params["gamma_concrete"],
+    )
+    w_soil = math_engine.calc_soil_weight(
+        params["pilecap_length"], params["pilecap_width"],
+        params["soil_height"], params["gamma_soil"],
+    )
+    pile_area = math_engine.calc_pile_area(params["pile_shape"], params["pile_dim"])
+    w_pile = math_engine.calc_pile_weight(pile_area, params["pile_length"], params["gamma_pile"])
+
+    lines = [
+        "# Pile Forces Analysis — SUMMARY",
+        "",
+        f"- Tool version: `pile-forces {tool_version}`",
+        f"- Generated: {datetime.now().isoformat(timespec='seconds')}",
+        f"- Output unit: **{unit}**",
+        "",
+        "## Intermediate Values (kN)",
+        "",
+        f"- W_pilecap = {w_pilecap:.3f} kN",
+        f"- W_soil = {w_soil:.3f} kN",
+        f"- Pile area = {pile_area:.4f} m² ({params['pile_shape']}, dim {params['pile_dim']} m)",
+        f"- W_pile (per pile) = {w_pile:.3f} kN",
+        "",
+        "## Governing Forces per Pile",
+        "",
+        "| Pile | Max Compression | Gov LC | Max Tension | Gov LC | Max Lateral | Gov LC |",
+        "|------|----------------:|:------:|------------:|:------:|------------:|:------:|",
+    ]
+    for _, r in df_envelope.iterrows():
+        lines.append(
+            f"| {r['Pile_ID']} | {r['Max_Compression']:.2f} | {r['LC_Max_Comp']} "
+            f"| {r['Max_Tension']:.2f} | {r['LC_Max_Tens']} "
+            f"| {r['Max_Lateral']:.2f} | {r['LC_Max_Lat']} |"
+        )
+
+    lines += [
+        "",
+        "## Method",
+        "",
+        "Rigid-pilecap elastic distribution (pile-group polar inertia). See the "
+        "PDF report / PRD for full formulas. All forces converted to the output "
+        f"unit ({unit}); internal computation in kN·m.",
+        "",
+    ]
+
+    path = os.path.join(out_dir, "SUMMARY.md")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    return path
