@@ -7,34 +7,40 @@ Distributes structural reaction forces (from Midas Civil) into individual
 pile foundation forces using pile group polar inertia.
 """
 
-import tempfile
 import os
+import tempfile
 
-import numpy as np
 import pandas as pd
 import streamlit as st
 
-from core.calculations import (
+from pile_forces.domain_engine import (
     build_envelope,
     build_master_output,
-    calc_centroid,
-    convert_units,
 )
-from core.visualization import (
+from pile_forces.io_utils import convert_units
+from pile_forces.math_engine import calc_centroid
+from pile_forces.plotly_viz import (
     export_figure_to_png,
     plot_axial_bubbles,
     plot_envelope_axial,
     plot_envelope_lateral,
     plot_lateral_vectors,
 )
-from core.report_generator import (
+from pile_forces.reporter import (
     compile_report_to_pdf,
     generate_typst_report,
 )
-from core.state_manager import (
+from pile_forces.state_manager import (
     export_state,
     import_state,
 )
+
+
+def _centroid_of(df):
+    """Centroid from a pile DataFrame (numeric-coerced), for the Streamlit UI."""
+    x_arr = pd.to_numeric(df["X"], errors="coerce").dropna().to_numpy()
+    y_arr = pd.to_numeric(df["Y"], errors="coerce").dropna().to_numpy()
+    return calc_centroid(x_arr, y_arr)
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +354,7 @@ with tab_input:
         st.metric("Load Cases", len(st.session_state["df_lc"]))
     with info_cols[2]:
         if st.session_state["centroid_mode"] == "Auto":
-            x_c, y_c = calc_centroid(st.session_state["df_piles"])
+            x_c, y_c = _centroid_of(st.session_state["df_piles"])
         else:
             x_c = st.session_state["x_centroid"]
             y_c = st.session_state["y_centroid"]
@@ -403,7 +409,7 @@ if can_calculate:
 
         # Determine centroid for plots
         if params["centroid_mode"] == "Auto":
-            centroid = calc_centroid(df_piles)
+            centroid = _centroid_of(df_piles)
         else:
             centroid = (params["x_centroid"], params["y_centroid"])
 

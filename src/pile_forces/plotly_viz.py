@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-
 # ---------------------------------------------------------------------------
 # Color palette
 # ---------------------------------------------------------------------------
@@ -205,12 +204,8 @@ def plot_axial_bubbles(
     # Bubble size: minimum 15px, max 60px, scaled proportionally
     bubble_sizes = np.where(abs_force == 0, 0, 15 + (abs_force / max_force) * 45)
 
-    # Color: compression (positive) = red, tension (negative) = blue
-    colors = np.where(
-        df_lc_subset["Axial_Force"].values >= 0,
-        _COLOR_COMPRESSION,
-        _COLOR_TENSION,
-    )
+    # Color: compression (positive) = red, tension (negative) = blue.
+    # (Per-trace masks below apply the colors; no combined array needed here.)
 
     fig = go.Figure()
 
@@ -288,7 +283,7 @@ def plot_axial_bubbles(
     # --- Static text annotations (for PDF/PNG export) ---
     annotations = []
     if show_labels:
-        for idx, row in df_lc_subset.iterrows():
+        for _idx, row in df_lc_subset.iterrows():
             annotations.append(dict(
                 x=row["X"],
                 y=row["Y"],
@@ -382,7 +377,7 @@ def plot_envelope_axial(
 
     annotations = []
     if show_labels:
-        for i, row in df_envelope.iterrows():
+        for _i, row in df_envelope.iterrows():
             px = row["X"]
             py = row["Y"]
             annotations.append(dict(
@@ -419,7 +414,6 @@ def plot_envelope_lateral(
     res_col = "Max_Lateral" if env_type == "Max" else "Min_Lateral"
     hx_col = "Max_Lat_Hx" if env_type == "Max" else "Min_Lat_Hx"
     hy_col = "Max_Lat_Hy" if env_type == "Max" else "Min_Lat_Hy"
-    lc_col = "LC_Max_Lat" if env_type == "Max" else "LC_Min_Lat"
     title_suffix = "Max Resultant" if env_type == "Max" else "Min Resultant"
 
     # Pile markers
