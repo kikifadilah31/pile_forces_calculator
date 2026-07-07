@@ -7,8 +7,19 @@ Distributes structural reaction forces (from Midas Civil) into individual
 pile foundation forces using pile group polar inertia.
 """
 
+import importlib.util
 import os
+import sys
 import tempfile
+
+# Make the src-layout package importable when the project is NOT pip-installed
+# (e.g. Streamlit Community Cloud runs `streamlit run app.py` from the repo
+# root without installing the package). Only touches sys.path when needed, so
+# a normal `pip install -e .` dev/CLI setup is unaffected.
+if importlib.util.find_spec("pile_forces") is None:
+    _SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+    if os.path.isdir(_SRC):
+        sys.path.insert(0, _SRC)
 
 import pandas as pd
 import streamlit as st

@@ -20,3 +20,8 @@ Thumbs.db
 
 # CLI run outputs (timestamped, never committed)
 output/
+
+# uv lockfile is intentionally NOT committed: its presence makes Streamlit
+# Community Cloud use `uv sync` (editable install + drops [web] extras),
+# which breaks the hosted app. Cloud uses requirements.txt instead.
+uv.lock
