@@ -62,6 +62,47 @@ def calc_pile_weight(area: float, length_pile: float, gamma_pile: float) -> floa
 
 
 # ---------------------------------------------------------------------------
+# Pilecap geometry (boundary + plan area)
+# ---------------------------------------------------------------------------
+
+def polygon_area(x: np.ndarray, y: np.ndarray) -> float:
+    """Plan area [m^2] of a simple polygon via the shoelace formula.
+
+    x, y : vertex coordinates [m] in order (open ring; closing edge implied).
+    Returns the absolute area, so vertex winding (CW/CCW) does not matter.
+    """
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    return 0.5 * abs(float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1))))
+
+
+def rectangle_corners(x_c: float, y_c: float, length: float, width: float) -> np.ndarray:
+    """Closed rectangle polygon centered on (x_c, y_c) [m].
+
+    length spans X, width spans Y. Returns a (5, 2) array (first vertex
+    repeated at the end) ready to plot as a closed outline.
+    """
+    hl, hw = length / 2.0, width / 2.0
+    return np.array([
+        [x_c - hl, y_c - hw],
+        [x_c + hl, y_c - hw],
+        [x_c + hl, y_c + hw],
+        [x_c - hl, y_c + hw],
+        [x_c - hl, y_c - hw],
+    ])
+
+
+def close_polygon(x: np.ndarray, y: np.ndarray) -> np.ndarray:
+    """Return an (n+1, 2) closed ring from open vertex lists (repeats vertex 0)."""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    pts = np.column_stack([x, y])
+    if not np.allclose(pts[0], pts[-1]):
+        pts = np.vstack([pts, pts[0]])
+    return pts
+
+
+# ---------------------------------------------------------------------------
 # Step 2: Reaction to Action Conversion
 # ---------------------------------------------------------------------------
 

@@ -26,6 +26,7 @@ VALIDATION_RTOL = 1e-3       # golden-file / validation-case relative tolerance
 # Column / Field Definitions
 # ---------------------------------------------------------------------------
 PILE_COLUMNS = ["Pile_ID", "X", "Y"]                              # coordinates CSV (X, Y in m)
+PILECAP_COLUMNS = ["X", "Y"]                                      # custom pilecap polygon vertices CSV (m)
 LC_COLUMNS = ["LC_ID", "Fx", "Fy", "Fz", "Mx", "My", "Mz"]        # load cases CSV (kN, kN·m)
 PILE_NUMERIC_COLUMNS = ["X", "Y"]
 LC_NUMERIC_COLUMNS = ["Fx", "Fy", "Fz", "Mx", "My", "Mz"]
@@ -87,6 +88,7 @@ COLOR_TENSION = "#3b82f6"      # cool blue  — negative axial (tension)
 COLOR_CENTROID = "#facc15"     # gold cross — group centroid
 COLOR_PILE_MARKER = "#64748b"  # slate      — plain pile marker
 COLOR_ARROW = "#10b981"        # emerald    — lateral force vectors
+COLOR_PILECAP = "#15803d"      # green       — pilecap boundary outline
 COLOR_PILE_OUTLINE = "#1d4ed8" # blue       — dashed true-scale pile footprint (diameter/side)
 COLOR_GRID = "#cbd5e1"
 COLOR_TEXT = "#0f172a"

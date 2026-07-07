@@ -45,6 +45,22 @@ def load_piles_csv(path: str) -> pd.DataFrame:
     return df[config.PILE_COLUMNS].copy()
 
 
+def load_pilecap_csv(path: str) -> pd.DataFrame:
+    """Load custom pilecap polygon vertices CSV. Columns: X, Y (meters).
+
+    Vertices are given in order around the outline (open ring; the closing
+    edge back to the first vertex is implied). Used for irregular pilecaps.
+    """
+    df = _read_csv(path, "pilecap polygon")
+    missing = set(config.PILECAP_COLUMNS) - set(df.columns)
+    if missing:
+        raise ValueError(
+            f"[pilecap polygon] kolom hilang: {sorted(missing)}. "
+            f"Ditemukan: {list(df.columns)}"
+        )
+    return df[config.PILECAP_COLUMNS].copy()
+
+
 def load_load_cases_csv(path: str) -> pd.DataFrame:
     """Load load cases CSV. Returns columns in config.LC_COLUMNS order.
 

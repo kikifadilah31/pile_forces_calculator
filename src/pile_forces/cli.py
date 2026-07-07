@@ -16,7 +16,17 @@ import os
 import sys
 from multiprocessing import freeze_support
 
-from . import __version__, config, domain_engine, io_utils, provenance, renderer, reporter, validators
+from . import (
+    __version__,
+    config,
+    domain_engine,
+    io_utils,
+    math_engine,
+    provenance,
+    renderer,
+    reporter,
+    validators,
+)
 
 logger = logging.getLogger("pile_forces")
 
@@ -38,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     g_in.add_argument("--piles", required=True, metavar="CSV", help="Pile coordinates CSV [Pile_ID, X, Y] (m).")
     g_in.add_argument("--load-cases", required=True, metavar="CSV", help="Load cases CSV [LC_ID, Fx, Fy, Fz, Mx, My, Mz] (kN, kN·m).")
     g_in.add_argument("--params", metavar="JSON", default=None, help="Optional design parameters JSON.")
+    g_in.add_argument("--pilecap", metavar="CSV", default=None, help="Optional custom pilecap polygon CSV [X, Y] (m) for irregular shapes. If omitted, a rectangle pilecap_length x pilecap_width centered on the centroid is used.")
 
     # --- Output ---
     g_out = parser.add_argument_group("output")
@@ -101,19 +112,26 @@ def _configure_logging(run_dir: str) -> logging.FileHandler:
 # Rendering + reporting
 # ---------------------------------------------------------------------------
 
-def _render_all_plots(df_master_disp, df_env_disp, centroid, run_dir, show_labels, unit, pile_shape, pile_dim):
+def _render_all_plots(
+    df_master_disp, df_env_disp, centroid, run_dir, show_labels, unit,
+    pile_shape, pile_dim, pilecap_boundary=None,
+):
     plots_dir = os.path.join(run_dir, "plots")
     plot_paths: list[tuple[str, str]] = []
 
     for lc_id in df_master_disp["LC_ID"].unique():
         subset = df_master_disp[df_master_disp["LC_ID"] == lc_id]
 
-        fig_lat = renderer.plot_lateral_vectors(subset, centroid, show_labels, unit, pile_shape, pile_dim)
+        fig_lat = renderer.plot_lateral_vectors(
+            subset, centroid, show_labels, unit, pile_shape, pile_dim, pilecap_boundary,
+        )
         p_lat = os.path.join(plots_dir, f"lateral_{lc_id}.png")
         renderer.save_figure(fig_lat, p_lat)
         plot_paths.append((p_lat, f"Lateral Force Vectors — LC: {lc_id}"))
 
-        fig_ax = renderer.plot_axial_bubbles(subset, centroid, show_labels, unit, pile_shape, pile_dim)
+        fig_ax = renderer.plot_axial_bubbles(
+            subset, centroid, show_labels, unit, pile_shape, pile_dim, pilecap_boundary,
+        )
         p_ax = os.path.join(plots_dir, f"axial_{lc_id}.png")
         renderer.save_figure(fig_ax, p_ax)
         plot_paths.append((p_ax, f"Axial Force Distribution — LC: {lc_id}"))
@@ -128,7 +146,7 @@ def _render_all_plots(df_master_disp, df_env_disp, centroid, run_dir, show_label
     for fn, env_type, fname, caption in envelope_specs:
         fig = fn(
             df_env_disp, centroid, env_type=env_type, show_labels=show_labels,
-            unit=unit, pile_shape=pile_shape, pile_dim=pile_dim,
+            unit=unit, pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
         )
         path = os.path.join(plots_dir, fname)
         renderer.save_figure(fig, path)
@@ -160,8 +178,14 @@ def run(args: argparse.Namespace) -> int:
         df_lc = validators.validate_load_cases_df(io_utils.load_load_cases_csv(args.load_cases))
         logger.info("Loaded %d piles and %d load cases.", len(df_piles), len(df_lc))
 
+        # --- Optional custom (irregular) pilecap polygon ---
+        pilecap_poly = None
+        if args.pilecap:
+            pilecap_poly = validators.validate_pilecap_df(io_utils.load_pilecap_csv(args.pilecap))
+            logger.info("Loaded custom pilecap polygon (%d vertices).", len(pilecap_poly))
+
         # --- Compute ---
-        df_master = domain_engine.build_master_output(df_piles, df_lc, params)
+        df_master = domain_engine.build_master_output(df_piles, df_lc, params, pilecap_poly)
         df_envelope = domain_engine.build_envelope(df_master)
         logger.info("Computed %d pile x LC combinations; envelope for %d piles.", len(df_master), len(df_envelope))
 
@@ -170,11 +194,19 @@ def run(args: argparse.Namespace) -> int:
         else:
             centroid = (params["x_centroid"], params["y_centroid"])
 
+        # --- Pilecap boundary polygon for the diagrams ---
+        if pilecap_poly is not None:
+            pilecap_boundary = math_engine.close_polygon(pilecap_poly["X"], pilecap_poly["Y"])
+        else:
+            pilecap_boundary = math_engine.rectangle_corners(
+                centroid[0], centroid[1], params["pilecap_length"], params["pilecap_width"],
+            )
+
         df_master_disp = io_utils.convert_units(df_master, unit)
         df_env_disp = io_utils.convert_units(df_envelope, unit)
 
         # --- Provenance ---
-        input_files = [p for p in (args.piles, args.load_cases, args.params) if p]
+        input_files = [p for p in (args.piles, args.load_cases, args.params, args.pilecap) if p]
         provenance.write_manifest(run_dir, __version__, input_files, params, vars(args))
         logger.info("Wrote run_manifest.json")
 
@@ -186,7 +218,7 @@ def run(args: argparse.Namespace) -> int:
         # --- Plots ---
         plot_paths = _render_all_plots(
             df_master_disp, df_env_disp, centroid, run_dir, show_labels, unit,
-            params["pile_shape"], params["pile_dim"],
+            params["pile_shape"], params["pile_dim"], pilecap_boundary,
         )
 
         # --- Summary + report ---

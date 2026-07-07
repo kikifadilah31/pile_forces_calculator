@@ -87,6 +87,24 @@ def test_lateral_distribution_validation_case():
     assert np.allclose(h_res, np.sqrt(hx ** 2 + hy ** 2), rtol=RTOL)
 
 
+def test_polygon_area_shoelace():
+    # Unit square -> area 1.0 ; winding direction must not matter
+    sq_x = np.array([0.0, 1.0, 1.0, 0.0])
+    sq_y = np.array([0.0, 0.0, 1.0, 1.0])
+    assert np.isclose(math_engine.polygon_area(sq_x, sq_y), 1.0, rtol=RTOL)
+    assert np.isclose(math_engine.polygon_area(sq_x[::-1], sq_y[::-1]), 1.0, rtol=RTOL)
+    # 3-4-5 right triangle -> area 6.0
+    assert np.isclose(math_engine.polygon_area(np.array([0.0, 4.0, 0.0]), np.array([0.0, 0.0, 3.0])), 6.0, rtol=RTOL)
+
+
+def test_rectangle_corners_closed_and_centered():
+    rect = math_engine.rectangle_corners(1.5, 1.5, 5.0, 4.0)
+    assert rect.shape == (5, 2)
+    assert np.allclose(rect[0], rect[-1])          # closed ring
+    assert np.isclose(rect[:, 0].min(), 1.5 - 2.5)  # length 5 spans X
+    assert np.isclose(rect[:, 1].max(), 1.5 + 2.0)  # width 4 spans Y
+
+
 def test_zero_division_single_line_geometry():
     """All piles on one line (y all equal) -> Sum(y^2)=0 -> Mx term drops to 0, no crash."""
     x = np.array([0.0, 1.0, 2.0])

@@ -48,6 +48,24 @@ def _plot_centroid(ax: plt.Axes, centroid: tuple[float, float]) -> None:
     )
 
 
+def _draw_pilecap_boundary(ax: plt.Axes, boundary_xy: np.ndarray | None) -> None:
+    """Draw the pilecap outline as a closed green polyline (data-space, m).
+
+    `boundary_xy` is an (n, 2) array of vertices (already closed, or will be
+    closed here). Works for both a regular rectangle and an irregular polygon.
+    """
+    if boundary_xy is None or len(boundary_xy) < 3:
+        return
+    pts = np.asarray(boundary_xy, dtype=float)
+    if not np.allclose(pts[0], pts[-1]):
+        pts = np.vstack([pts, pts[0]])
+    ax.plot(
+        pts[:, 0], pts[:, 1],
+        color=config.COLOR_PILECAP, linewidth=2.0, linestyle="-",
+        zorder=3, label="Pilecap boundary",
+    )
+
+
 def _draw_pile_outline(
     ax: plt.Axes,
     x_vals: pd.Series,
@@ -198,11 +216,22 @@ def _draw_axial(
     return drawn["comp"], drawn["tens"]
 
 
+def _pilecap_legend_handle() -> Line2D:
+    """Fixed legend swatch for the pilecap boundary."""
+    return Line2D(
+        [0], [0], color=config.COLOR_PILECAP, linewidth=2.0, linestyle="-",
+        label="Pilecap boundary",
+    )
+
+
 def _axial_legend_handles(
-    marker: str, has_compression: bool, has_tension: bool, show_pile_outline: bool = True,
+    marker: str, has_compression: bool, has_tension: bool,
+    show_pile_outline: bool = True, show_pilecap: bool = False,
 ) -> list[Line2D]:
     """Fixed-size legend swatches for axial bubble plots (independent of bubble data size)."""
     handles = []
+    if show_pilecap:
+        handles.append(_pilecap_legend_handle())
     if has_compression:
         handles.append(Line2D(
             [0], [0], marker=marker, linestyle="None", markersize=config.LEGEND_MARKER_SIZE,
@@ -232,18 +261,22 @@ def plot_axial_bubbles(
     unit: str = "kN",
     pile_shape: str = "Circle",
     pile_dim: float = 0.0,
+    pilecap_boundary: np.ndarray | None = None,
 ) -> Figure:
     """Bubble plot of axial forces for a single load case."""
     lc_id = df_lc_subset["LC_ID"].iloc[0] if "LC_ID" in df_lc_subset.columns else "N/A"
     marker = config.PILE_SHAPE_MARKERS.get(pile_shape, "o")
     fig, ax = _new_axes(f"Axial Force Distribution — LC: {lc_id}  ({unit})")
+    _draw_pilecap_boundary(ax, pilecap_boundary)
     has_comp, has_tens = _draw_axial(
         ax, df_lc_subset["X"], df_lc_subset["Y"], df_lc_subset["Axial_Force"], show_labels,
         marker, pile_shape, pile_dim,
     )
     _plot_centroid(ax, centroid)
     _finalize_axes(ax)
-    _place_legend(ax, _axial_legend_handles(marker, has_comp, has_tens, pile_dim > 0))
+    _place_legend(ax, _axial_legend_handles(
+        marker, has_comp, has_tens, pile_dim > 0, pilecap_boundary is not None,
+    ))
     return fig
 
 
@@ -255,18 +288,22 @@ def plot_envelope_axial(
     unit: str = "kN",
     pile_shape: str = "Circle",
     pile_dim: float = 0.0,
+    pilecap_boundary: np.ndarray | None = None,
 ) -> Figure:
     """Bubble plot of envelope axial forces (env_type: 'Max' comp | 'Min' tens)."""
     col = "Max_Compression" if env_type == "Max" else "Max_Tension"
     title_suffix = "Max Compression" if env_type == "Max" else "Max Tension"
     marker = config.PILE_SHAPE_MARKERS.get(pile_shape, "o")
     fig, ax = _new_axes(f"Envelope Axial — {title_suffix}  ({unit})")
+    _draw_pilecap_boundary(ax, pilecap_boundary)
     has_comp, has_tens = _draw_axial(
         ax, df_envelope["X"], df_envelope["Y"], df_envelope[col], show_labels, marker, pile_shape, pile_dim,
     )
     _plot_centroid(ax, centroid)
     _finalize_axes(ax)
-    _place_legend(ax, _axial_legend_handles(marker, has_comp, has_tens, pile_dim > 0))
+    _place_legend(ax, _axial_legend_handles(
+        marker, has_comp, has_tens, pile_dim > 0, pilecap_boundary is not None,
+    ))
     return fig
 
 
@@ -335,11 +372,13 @@ def plot_lateral_vectors(
     unit: str = "kN",
     pile_shape: str = "Circle",
     pile_dim: float = 0.0,
+    pilecap_boundary: np.ndarray | None = None,
 ) -> Figure:
     """Top-down lateral force vector plot for a single load case."""
     lc_id = df_lc_subset["LC_ID"].iloc[0] if "LC_ID" in df_lc_subset.columns else "N/A"
     marker = config.PILE_SHAPE_MARKERS.get(pile_shape, "o")
     fig, ax = _new_axes(f"Lateral Force Vectors — LC: {lc_id}  ({unit})")
+    _draw_pilecap_boundary(ax, pilecap_boundary)
     _draw_lateral(
         ax, df_lc_subset["X"], df_lc_subset["Y"], df_lc_subset["Hx"], df_lc_subset["Hy"],
         df_lc_subset["H_Resultant"], df_lc_subset["Pile_ID"], show_labels, unit, marker, pile_shape, pile_dim,
@@ -358,6 +397,7 @@ def plot_envelope_lateral(
     unit: str = "kN",
     pile_shape: str = "Circle",
     pile_dim: float = 0.0,
+    pilecap_boundary: np.ndarray | None = None,
 ) -> Figure:
     """Envelope lateral vector plot (env_type: 'Max' | 'Min' resultant)."""
     res_col = "Max_Lateral" if env_type == "Max" else "Min_Lateral"
@@ -367,6 +407,7 @@ def plot_envelope_lateral(
     marker = config.PILE_SHAPE_MARKERS.get(pile_shape, "o")
 
     fig, ax = _new_axes(f"Envelope Lateral Vectors — {title_suffix}  ({unit})")
+    _draw_pilecap_boundary(ax, pilecap_boundary)
     _draw_lateral(
         ax, df_envelope["X"], df_envelope["Y"], df_envelope[hx_col], df_envelope[hy_col],
         df_envelope[res_col], df_envelope["Pile_ID"], show_labels, unit, marker, pile_shape, pile_dim,

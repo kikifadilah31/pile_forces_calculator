@@ -15,6 +15,7 @@ def build_master_output(
     df_piles: pd.DataFrame,
     df_lc: pd.DataFrame,
     params: dict,
+    pilecap_poly: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Build the master output table by cross-joining Load Cases x Piles.
 
@@ -23,20 +24,26 @@ def build_master_output(
     df_piles : DataFrame [Pile_ID, X, Y]  (X, Y in m)
     df_lc : DataFrame [LC_ID, Fx, Fy, Fz, Mx, My, Mz]  (raw Midas reactions, kN / kN·m)
     params : design parameters (see config.DEFAULT_PARAMS)
+    pilecap_poly : optional DataFrame [X, Y] of custom pilecap polygon vertices.
+        When given (irregular pilecap), the pilecap concrete AND soil weights
+        use the polygon's actual plan area instead of pilecap_length × width,
+        keeping the drawn boundary and the computed weight consistent.
 
     Returns
     -------
     DataFrame [LC_ID, Pile_ID, X, Y, Axial_Force, Hx, Hy, H_Resultant] in kN.
     """
-    # --- Self-weights (kN) ---
-    w_pilecap = math_engine.calc_pilecap_weight(
-        params["pilecap_length"], params["pilecap_width"],
-        params["pilecap_height"], params["gamma_concrete"],
-    )
-    w_soil = math_engine.calc_soil_weight(
-        params["pilecap_length"], params["pilecap_width"],
-        params["soil_height"], params["gamma_soil"],
-    )
+    # --- Plan area (m^2): custom polygon area if given, else length × width ---
+    if pilecap_poly is not None:
+        plan_area = math_engine.polygon_area(
+            pilecap_poly["X"].to_numpy(dtype=float), pilecap_poly["Y"].to_numpy(dtype=float),
+        )
+    else:
+        plan_area = params["pilecap_length"] * params["pilecap_width"]
+
+    # --- Self-weights (kN) — area × thickness × unit weight ---
+    w_pilecap = plan_area * params["pilecap_height"] * params["gamma_concrete"]
+    w_soil = plan_area * params["soil_height"] * params["gamma_soil"]
     pile_area = math_engine.calc_pile_area(params["pile_shape"], params["pile_dim"])
     w_pile = math_engine.calc_pile_weight(pile_area, params["pile_length"], params["gamma_pile"])
 
