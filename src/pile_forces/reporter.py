@@ -103,6 +103,28 @@ def generate_typst_report(
     pile_shape_text = params.get("pile_shape", "N/A")
     pile_dim_text = f"{params.get('pile_dim', 0):.3f} m"
 
+    # Optional project metadata lines in the title block (omit if blank)
+    meta_pairs = [
+        ("Project", params.get("project_name", "")),
+        ("Engineer", params.get("engineer", "")),
+        ("Revision", params.get("revision", "")),
+    ]
+    meta_block = "".join(
+        f'\n    #v(4pt)\n    #text(size: 11pt, fill: rgb("cbd5e1"))[{label}: {_escape_typst(str(val))}]'
+        for label, val in meta_pairs if str(val).strip()
+    )
+
+    # Optional capacity verdict
+    capacity_note = ""
+    if params.get("check_capacity") and "Status" in df_envelope.columns:
+        n_bad = int((df_envelope["Status"] == "INADEQUATE").sum())
+        verdict = "ALL PILES OK" if n_bad == 0 else f"{n_bad} PILE(S) INADEQUATE (DCR > 1.0)"
+        color = "16a34a" if n_bad == 0 else "dc2626"
+        capacity_note = (
+            f'\n#v(8pt)\n#block(width: 100%, fill: rgb("{color}"), radius: 6pt, inset: 10pt)['
+            f'#text(fill: white, weight: "bold")[Capacity Check: {verdict}]]\n'
+        )
+
     image_blocks = []
     for img_path, label in plot_image_paths:
         img_name = os.path.basename(img_path)
@@ -145,10 +167,10 @@ def generate_typst_report(
   )[
     #text(size: 22pt, weight: "bold", fill: white)[{_escape_typst(report_title)}]
     #v(8pt)
-    #text(size: 11pt, fill: rgb("94a3b8"))[Generated: {date_str}]
+    #text(size: 11pt, fill: rgb("94a3b8"))[Generated: {date_str}]{meta_block}
   ]
 ]
-
+{capacity_note}
 #v(16pt)
 
 = Project Parameters
@@ -253,6 +275,15 @@ def write_summary_md(
         f"- Tool version: `pile-forces {tool_version}`",
         f"- Generated: {datetime.now().isoformat(timespec='seconds')}",
         f"- Output unit: **{unit}**",
+    ]
+    for label, key in (("Project", "project_name"), ("Engineer", "engineer"), ("Revision", "revision")):
+        if str(params.get(key, "")).strip():
+            lines.append(f"- {label}: {params[key]}")
+    if params.get("check_capacity") and "Status" in df_envelope.columns:
+        n_bad = int((df_envelope["Status"] == "INADEQUATE").sum())
+        verdict = "ALL PILES OK" if n_bad == 0 else f"{n_bad} pile(s) INADEQUATE (DCR > 1.0)"
+        lines.append(f"- **Capacity check: {verdict}**")
+    lines += [
         "",
         "## Intermediate Values (kN)",
         "",

@@ -87,6 +87,60 @@ def test_lateral_distribution_validation_case():
     assert np.allclose(h_res, np.sqrt(hx ** 2 + hy ** 2), rtol=RTOL)
 
 
+def test_axial_ixy_asymmetric_group():
+    """Asymmetric 3-pile triangle at (0,0),(2,0),(0,2); pure My=10, Mx=0.
+
+    Centroid (2/3, 2/3): Ixx=Iyy=8/3, Ixy=-4/3, det=16/3.
+    With Ixy: P = [-5, 5, 0] and BOTH equilibria hold (ΣP·x=My=10, ΣP·y=-Mx=0).
+    Without Ixy (sum_xy=0) the classic per-axis form gives [-2.5, 5, -2.5] and
+    VIOLATES ΣP·y=0 (spurious moment about x) — the reason the correction matters.
+    """
+    x_tri = np.array([0.0, 2.0, 0.0])
+    y_tri = np.array([0.0, 0.0, 2.0])
+    x_c, y_c = math_engine.calc_centroid(x_tri, y_tri)
+    x_rel, y_rel = math_engine.calc_relative_coords(x_tri, y_tri, x_c, y_c)
+    sum_x_sq = float((x_rel ** 2).sum())
+    sum_y_sq = float((y_rel ** 2).sum())
+    sum_xy = float((x_rel * y_rel).sum())
+
+    kw = dict(
+        fz_act=0.0, mx_act=0.0, my_act=10.0, n_piles=3,
+        x_rel=x_rel, y_rel=y_rel, sum_x_sq=sum_x_sq, sum_y_sq=sum_y_sq,
+        w_pilecap=0.0, w_soil=0.0, w_pile=0.0,
+    )
+
+    # With Ixy correction
+    p_ixy = math_engine.calc_axial_forces(sum_xy=sum_xy, **kw)
+    assert np.allclose(p_ixy, [-5.0, 5.0, 0.0], rtol=RTOL, atol=1e-9)
+    assert np.isclose((p_ixy * x_rel).sum(), 10.0, rtol=RTOL)   # ΣP·x = My
+    assert np.isclose((p_ixy * y_rel).sum(), 0.0, atol=1e-9)    # ΣP·y = -Mx = 0
+
+    # Without Ixy (toggle off) — differs, and breaks the ΣP·y equilibrium
+    p_noixy = math_engine.calc_axial_forces(sum_xy=0.0, **kw)
+    assert np.allclose(p_noixy, [-2.5, 5.0, -2.5], rtol=RTOL, atol=1e-9)
+    assert not np.isclose((p_noixy * y_rel).sum(), 0.0, atol=1e-6)
+
+
+def test_calc_dcr_allowable():
+    axial = np.array([1000.0, -200.0, 0.0])   # comp, tension, zero
+    h_res = np.array([50.0, 40.0, 10.0])
+    dc, dt, dl, dmax = math_engine.calc_dcr(axial, h_res, cap_comp=2000.0, cap_tens=400.0, cap_lat=80.0)
+    assert np.allclose(dc, [0.5, 0.0, 0.0], rtol=RTOL)      # 1000/2000
+    assert np.allclose(dt, [0.0, 0.5, 0.0], rtol=RTOL)      # 200/400
+    assert np.allclose(dl, [0.625, 0.5, 0.125], rtol=RTOL)  # h/80
+    assert np.allclose(dmax, [0.625, 0.5, 0.125], rtol=RTOL)
+
+
+def test_calc_dcr_zero_capacity_ignored():
+    # cap=0 means "not checked" -> that ratio is 0, never a division error
+    dc, dt, dl, dmax = math_engine.calc_dcr(
+        np.array([500.0]), np.array([100.0]), cap_comp=0.0, cap_tens=0.0, cap_lat=200.0,
+    )
+    assert dc[0] == 0.0 and dt[0] == 0.0
+    assert np.isclose(dl[0], 0.5, rtol=RTOL)
+    assert np.isclose(dmax[0], 0.5, rtol=RTOL)
+
+
 def test_polygon_area_shoelace():
     # Unit square -> area 1.0 ; winding direction must not matter
     sq_x = np.array([0.0, 1.0, 1.0, 0.0])

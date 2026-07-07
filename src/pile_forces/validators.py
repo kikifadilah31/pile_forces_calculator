@@ -104,4 +104,16 @@ def validate_params(params: dict) -> dict:
     if unit not in config.VALID_OUTPUT_UNITS:
         raise ValueError(f"[{name}] 'output_unit' harus salah satu dari {config.VALID_OUTPUT_UNITS} (diberikan: {unit!r}).")
 
+    # Capacity check: at least one capacity must be > 0 when enabled, and no
+    # negative capacities allowed (fail-fast on a misconfigured check).
+    if params.get("check_capacity"):
+        caps = {k: float(params.get(k, 0) or 0) for k in ("cap_axial_comp", "cap_axial_tension", "cap_lateral")}
+        if any(v < 0 for v in caps.values()):
+            raise ValueError(f"[{name}] kapasitas tidak boleh negatif (diberikan: {caps}).")
+        if all(v <= 0 for v in caps.values()):
+            raise ValueError(
+                f"[{name}] 'check_capacity' aktif tapi semua kapasitas 0 — "
+                "isi minimal satu dari cap_axial_comp / cap_axial_tension / cap_lateral (> 0)."
+            )
+
     return params

@@ -21,13 +21,17 @@ from . import config
 # CSV loading
 # ---------------------------------------------------------------------------
 
-def _read_csv(path: str, name: str) -> pd.DataFrame:
+def _read_table(path: str, name: str) -> pd.DataFrame:
+    """Read a tabular input file, dispatching by extension: .csv or .xlsx/.xlsm."""
     if not os.path.isfile(path):
         raise FileNotFoundError(f"[{name}] file tidak ditemukan: {path}")
+    ext = os.path.splitext(path)[1].lower()
     try:
+        if ext in (".xlsx", ".xlsm"):
+            return pd.read_excel(path)
         return pd.read_csv(path)
     except Exception as exc:  # noqa: BLE001 — surface a clean diagnostic
-        raise ValueError(f"[{name}] gagal membaca CSV {path}: {exc}") from exc
+        raise ValueError(f"[{name}] gagal membaca {path}: {exc}") from exc
 
 
 def load_piles_csv(path: str) -> pd.DataFrame:
@@ -35,7 +39,7 @@ def load_piles_csv(path: str) -> pd.DataFrame:
 
     Coordinates are in meters. Required columns: Pile_ID, X, Y.
     """
-    df = _read_csv(path, "pile coordinates")
+    df = _read_table(path, "pile coordinates")
     missing = set(config.PILE_COLUMNS) - set(df.columns)
     if missing:
         raise ValueError(
@@ -51,7 +55,7 @@ def load_pilecap_csv(path: str) -> pd.DataFrame:
     Vertices are given in order around the outline (open ring; the closing
     edge back to the first vertex is implied). Used for irregular pilecaps.
     """
-    df = _read_csv(path, "pilecap polygon")
+    df = _read_table(path, "pilecap polygon")
     missing = set(config.PILECAP_COLUMNS) - set(df.columns)
     if missing:
         raise ValueError(
@@ -67,7 +71,7 @@ def load_load_cases_csv(path: str) -> pd.DataFrame:
     Forces in kN, moments in kN·m. Required columns:
     LC_ID, Fx, Fy, Fz, Mx, My, Mz.
     """
-    df = _read_csv(path, "load cases")
+    df = _read_table(path, "load cases")
     missing = set(config.LC_COLUMNS) - set(df.columns)
     if missing:
         raise ValueError(
@@ -137,3 +141,18 @@ def convert_units(df: pd.DataFrame, unit: str) -> pd.DataFrame:
     if unit == "Ton" and cols:
         df_out[cols] = df_out[cols] / config.TON_TO_KN
     return df_out
+
+
+# ---------------------------------------------------------------------------
+# Excel export
+# ---------------------------------------------------------------------------
+
+def write_results_xlsx(path_or_buffer, df_master: pd.DataFrame, df_envelope: pd.DataFrame) -> None:
+    """Write results to a multi-sheet .xlsx workbook (Master + Envelope).
+
+    `path_or_buffer` may be a file path or a binary buffer (e.g. io.BytesIO for
+    Streamlit downloads). DCR columns, if present, ride along in each sheet.
+    """
+    with pd.ExcelWriter(path_or_buffer, engine="openpyxl") as writer:
+        df_master.to_excel(writer, sheet_name="Master", index=False)
+        df_envelope.to_excel(writer, sheet_name="Envelope", index=False)

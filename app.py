@@ -8,6 +8,7 @@ pile foundation forces using pile group polar inertia.
 """
 
 import importlib.util
+import io
 import os
 import sys
 import tempfile
@@ -25,10 +26,11 @@ import pandas as pd
 import streamlit as st
 
 from pile_forces.domain_engine import (
+    build_dcr,
     build_envelope,
     build_master_output,
 )
-from pile_forces.io_utils import convert_units
+from pile_forces.io_utils import convert_units, write_results_xlsx
 from pile_forces.math_engine import calc_centroid, close_polygon, rectangle_corners
 from pile_forces.plotly_viz import (
     export_figure_to_png,
@@ -52,6 +54,13 @@ def _centroid_of(df):
     x_arr = pd.to_numeric(df["X"], errors="coerce").dropna().to_numpy()
     y_arr = pd.to_numeric(df["Y"], errors="coerce").dropna().to_numpy()
     return calc_centroid(x_arr, y_arr)
+
+
+def _read_upload(uploaded):
+    """Read an uploaded table (CSV or Excel), dispatching by file name."""
+    if uploaded.name.lower().endswith((".xlsx", ".xlsm")):
+        return pd.read_excel(uploaded)
+    return pd.read_csv(uploaded)
 
 
 # ---------------------------------------------------------------------------
@@ -97,6 +106,17 @@ def _init_session_state():
         "output_unit": "kN",
         # UI
         "show_labels": True,
+        # Analysis options
+        "apply_ixy": True,
+        # Capacity check (allowable, kN)
+        "check_capacity": False,
+        "cap_axial_comp": 0.0,
+        "cap_axial_tension": 0.0,
+        "cap_lateral": 0.0,
+        # Report metadata
+        "project_name": "",
+        "engineer": "",
+        "revision": "",
         # Custom (irregular) pilecap
         "pilecap_custom": False,
     }
@@ -152,7 +172,9 @@ with st.sidebar:
             "soil_height", "gamma_soil",
             "pile_shape", "pile_dim", "pile_length", "gamma_pile",
             "centroid_mode", "x_centroid", "y_centroid",
-            "output_unit", "pilecap_custom",
+            "output_unit", "pilecap_custom", "apply_ixy",
+            "check_capacity", "cap_axial_comp", "cap_axial_tension", "cap_lateral",
+            "project_name", "engineer", "revision",
         ]
     }
     json_str = export_state(
@@ -217,11 +239,11 @@ with st.sidebar:
     if st.session_state["pilecap_custom"]:
         with st.expander("📁 Import pilecap polygon from CSV", expanded=False):
             uploaded_pc_csv = st.file_uploader(
-                "Choose pilecap CSV [X, Y]", type=["csv"], key="upload_pilecap",
+                "Choose pilecap CSV / Excel [X, Y]", type=["csv", "xlsx"], key="upload_pilecap",
             )
             if uploaded_pc_csv is not None:
                 try:
-                    df_pc_up = pd.read_csv(uploaded_pc_csv)
+                    df_pc_up = _read_upload(uploaded_pc_csv)
                     if {"X", "Y"}.issubset(df_pc_up.columns):
                         st.session_state["df_pilecap"] = df_pc_up[["X", "Y"]]
                         st.success("✅ Pilecap polygon loaded from CSV")
@@ -294,6 +316,16 @@ with st.sidebar:
             step=0.1, format="%.3f", key="inp_yc",
         )
 
+    st.session_state["apply_ixy"] = st.checkbox(
+        "Apply Ixy (asymmetric pile groups)",
+        value=st.session_state["apply_ixy"],
+        key="inp_apply_ixy",
+        help="Include the product-of-inertia term in the axial distribution. "
+             "Matters only for asymmetric/irregular pile layouts; no effect on "
+             "symmetric groups. Turn off to compare against the classic "
+             "per-axis formula.",
+    )
+
     st.divider()
 
     # --- Output Unit ---
@@ -303,6 +335,32 @@ with st.sidebar:
         index=0 if st.session_state["output_unit"] == "kN" else 1,
         key="inp_unit",
     )
+
+    st.divider()
+
+    # --- Capacity Check ---
+    st.markdown("### 🛡️ Capacity Check")
+    st.session_state["check_capacity"] = st.checkbox(
+        "Enable capacity check (DCR)",
+        value=st.session_state["check_capacity"],
+        key="inp_check_cap",
+        help="Bandingkan gaya tiap tiang dengan kapasitas IZIN (allowable). "
+             "DCR = gaya / kapasitas izin; DCR > 1.0 = INADEQUATE.",
+    )
+    if st.session_state["check_capacity"]:
+        st.session_state["cap_axial_comp"] = st.number_input(
+            "Kapasitas izin aksial tekan (kN)", value=st.session_state["cap_axial_comp"],
+            min_value=0.0, step=50.0, format="%.1f", key="inp_cap_comp",
+        )
+        st.session_state["cap_axial_tension"] = st.number_input(
+            "Kapasitas izin aksial tarik (kN)", value=st.session_state["cap_axial_tension"],
+            min_value=0.0, step=50.0, format="%.1f", key="inp_cap_tens",
+        )
+        st.session_state["cap_lateral"] = st.number_input(
+            "Kapasitas izin lateral (kN)", value=st.session_state["cap_lateral"],
+            min_value=0.0, step=10.0, format="%.1f", key="inp_cap_lat",
+        )
+        st.caption("Isi 0 untuk komponen yang tidak dicek. Minimal satu > 0.")
 
     st.divider()
 
@@ -326,12 +384,13 @@ st.markdown("Automated distribution of structural reaction forces into individua
 # Main Tabs
 # ---------------------------------------------------------------------------
 
-tab_input, tab_results, tab_lateral, tab_axial, tab_envelope, tab_report = st.tabs([
+tab_input, tab_results, tab_lateral, tab_axial, tab_envelope, tab_capacity, tab_report = st.tabs([
     "📥 Input Data",
     "📊 Results",
     "📈 Lateral Vectors",
     "🔴 Axial Bubbles",
     "📋 Envelope",
+    "🛡️ Capacity Check",
     "📄 Report",
 ])
 
@@ -348,11 +407,11 @@ with tab_input:
 
         with st.expander("📁 Import from CSV", expanded=False):
             uploaded_piles_csv = st.file_uploader(
-                "Choose pile coordinates CSV", type=["csv"], key="upload_piles",
+                "Choose pile coordinates CSV / Excel", type=["csv", "xlsx"], key="upload_piles",
             )
             if uploaded_piles_csv is not None:
                 try:
-                    df_uploaded = pd.read_csv(uploaded_piles_csv)
+                    df_uploaded = _read_upload(uploaded_piles_csv)
                     required = {"Pile_ID", "X", "Y"}
                     if required.issubset(set(df_uploaded.columns)):
                         st.session_state["df_piles"] = df_uploaded[list(required)]
@@ -375,11 +434,11 @@ with tab_input:
 
         with st.expander("📁 Import from CSV", expanded=False):
             uploaded_lc_csv = st.file_uploader(
-                "Choose load cases CSV", type=["csv"], key="upload_lc",
+                "Choose load cases CSV / Excel", type=["csv", "xlsx"], key="upload_lc",
             )
             if uploaded_lc_csv is not None:
                 try:
-                    df_uploaded_lc = pd.read_csv(uploaded_lc_csv)
+                    df_uploaded_lc = _read_upload(uploaded_lc_csv)
                     required_lc = {"LC_ID", "Fx", "Fy", "Fz", "Mx", "My", "Mz"}
                     if required_lc.issubset(set(df_uploaded_lc.columns)):
                         st.session_state["df_lc"] = df_uploaded_lc[list(required_lc)]
@@ -432,6 +491,14 @@ params = {
     "centroid_mode": st.session_state["centroid_mode"],
     "x_centroid": st.session_state["x_centroid"],
     "y_centroid": st.session_state["y_centroid"],
+    "apply_ixy": st.session_state["apply_ixy"],
+    "check_capacity": st.session_state["check_capacity"],
+    "cap_axial_comp": st.session_state["cap_axial_comp"],
+    "cap_axial_tension": st.session_state["cap_axial_tension"],
+    "cap_lateral": st.session_state["cap_lateral"],
+    "project_name": st.session_state["project_name"],
+    "engineer": st.session_state["engineer"],
+    "revision": st.session_state["revision"],
 }
 
 df_piles = st.session_state["df_piles"].copy()
@@ -467,6 +534,7 @@ if can_calculate:
                 pilecap_poly = df_pc
 
         df_master = build_master_output(df_piles, df_lc, params, pilecap_poly)
+        df_master = build_dcr(df_master, params)
         df_envelope = build_envelope(df_master)
 
         # Determine centroid for plots
@@ -518,13 +586,21 @@ with tab_results:
             height=400,
         )
 
-        # CSV Download
-        csv_data = df_master_display.to_csv(index=False).encode("utf-8")
-        st.download_button(
+        # Downloads: CSV + Excel (Master + Envelope sheets)
+        dl_cols = st.columns(2)
+        dl_cols[0].download_button(
             label="⬇️ Download Results CSV",
-            data=csv_data,
+            data=df_master_display.to_csv(index=False).encode("utf-8"),
             file_name="pile_forces_results.csv",
             mime="text/csv",
+        )
+        _xlsx_buf = io.BytesIO()
+        write_results_xlsx(_xlsx_buf, df_master_display, df_envelope_display)
+        dl_cols[1].download_button(
+            label="⬇️ Download Excel (Master + Envelope)",
+            data=_xlsx_buf.getvalue(),
+            file_name="pile_forces_results.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
         # Summary metrics
@@ -746,6 +822,61 @@ with tab_envelope:
         st.info("📝 Masukkan data pada tab Input Data untuk melihat envelope.")
 
 
+# ========================== TAB: Capacity Check ============================
+
+with tab_capacity:
+    if not calculation_ok:
+        st.info("📝 Masukkan data pada tab Input Data.")
+    elif not st.session_state["check_capacity"]:
+        st.info("🛡️ Aktifkan **Enable capacity check (DCR)** di sidebar dan isi kapasitas izin tiang.")
+    elif "DCR_Max" not in df_master_display.columns:
+        st.warning("⚠️ Isi minimal satu kapasitas izin (> 0) di sidebar.")
+    else:
+        st.subheader("Capacity Check — Demand/Capacity Ratio (DCR)")
+        st.caption("DCR = gaya / kapasitas izin. DCR ≤ 1.0 = OK, > 1.0 = INADEQUATE.")
+
+        n_bad = int((df_envelope_display["Status"] == "INADEQUATE").sum())
+        n_total = len(df_envelope_display)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Piles OK", f"{n_total - n_bad}/{n_total}")
+        c2.metric("INADEQUATE", f"{n_bad}")
+        gov = df_envelope_display.loc[df_envelope_display["Max_DCR"].idxmax()]
+        c3.metric("Governing DCR", f"{gov['Max_DCR']:.2f}", delta=f"Pile {gov['Pile_ID']} · {gov['LC_Max_DCR']}", delta_color="off")
+        if n_bad == 0:
+            st.success("✅ Semua tiang memenuhi (DCR ≤ 1.0).")
+        else:
+            st.error(f"❌ {n_bad} tiang INADEQUATE (DCR > 1.0).")
+
+        st.markdown("**Envelope DCR per Pile**")
+        env_dcr_cols = ["Pile_ID", "Max_Compression", "Max_Tension", "Max_Lateral",
+                        "Max_DCR", "LC_Max_DCR", "Status"]
+        env_dcr_cols = [c for c in env_dcr_cols if c in df_envelope_display.columns]
+        st.dataframe(
+            df_envelope_display[env_dcr_cols].style.format(
+                {c: "{:.2f}" for c in ["Max_Compression", "Max_Tension", "Max_Lateral", "Max_DCR"]
+                 if c in env_dcr_cols}
+            ),
+            width="stretch",
+        )
+
+        st.markdown("**DCR Detail (semua Pile × LC)**")
+        dcr_cols = ["LC_ID", "Pile_ID", "Axial_Force", "H_Resultant",
+                    "DCR_Comp", "DCR_Tension", "DCR_Lateral", "DCR_Max", "Status"]
+        dcr_cols = [c for c in dcr_cols if c in df_master_display.columns]
+        st.dataframe(
+            df_master_display[dcr_cols].style.format(
+                {c: "{:.2f}" for c in ["Axial_Force", "H_Resultant", "DCR_Comp",
+                                        "DCR_Tension", "DCR_Lateral", "DCR_Max"] if c in dcr_cols}
+            ),
+            width="stretch", height=360,
+        )
+        st.download_button(
+            "⬇️ Download DCR CSV",
+            data=df_master_display[dcr_cols].to_csv(index=False).encode("utf-8"),
+            file_name="pile_forces_dcr.csv", mime="text/csv",
+        )
+
+
 # ========================== TAB: Report ====================================
 
 with tab_report:
@@ -761,6 +892,21 @@ with tab_report:
             value="Pile Forces Analysis Report",
             help="This title will be displayed on the first page of the PDF report."
         )
+
+        meta_cols = st.columns(3)
+        st.session_state["project_name"] = meta_cols[0].text_input(
+            "Project name", value=st.session_state["project_name"], key="inp_proj",
+        )
+        st.session_state["engineer"] = meta_cols[1].text_input(
+            "Engineer", value=st.session_state["engineer"], key="inp_eng",
+        )
+        st.session_state["revision"] = meta_cols[2].text_input(
+            "Revision", value=st.session_state["revision"], key="inp_rev",
+        )
+        # Reflect any freshly typed metadata into params used for the report.
+        params["project_name"] = st.session_state["project_name"]
+        params["engineer"] = st.session_state["engineer"]
+        params["revision"] = st.session_state["revision"]
 
         if st.button("🔄 Generate PDF Report", type="primary", width="stretch"):
             with st.spinner("Generating report..."):

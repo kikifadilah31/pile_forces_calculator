@@ -87,3 +87,22 @@ def test_pilecap_polygon_missing_column_raises():
     df = pd.DataFrame({"X": [0.0, 2.0, 1.0]})
     with pytest.raises(ValueError, match="kolom hilang"):
         validators.validate_pilecap_df(df)
+
+
+def test_capacity_check_all_zero_raises():
+    params = dict(config.DEFAULT_PARAMS)
+    params["check_capacity"] = True  # all caps still 0
+    with pytest.raises(ValueError, match="semua kapasitas 0"):
+        validators.validate_params(params)
+
+
+def test_capacity_negative_raises():
+    params = dict(config.DEFAULT_PARAMS)
+    params.update(check_capacity=True, cap_axial_comp=-100.0)
+    with pytest.raises(ValueError, match="negatif"):
+        validators.validate_params(params)
+
+
+def test_capacity_off_ignores_zero_caps():
+    # check disabled -> zero capacities are fine
+    assert validators.validate_params(dict(config.DEFAULT_PARAMS)) is not None
