@@ -1,0 +1,9 @@
+# Dependencies for the hosted Streamlit Cloud deployment
+# (https://pileforcescalculator.streamlit.app/).
+#
+# Installs this project as a package (so `import pile_forces` works with the
+# src-layout) plus the [web] extra (streamlit, plotly, kaleido). The core
+# deps (numpy, pandas, matplotlib, typst) come in transitively via the package.
+#
+# CLI users do NOT need this file — install via uv instead (see README).
+.[web]
