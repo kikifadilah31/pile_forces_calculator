@@ -1,9 +1,23 @@
 # Dependencies for the hosted Streamlit Cloud deployment
 # (https://pileforcescalculator.streamlit.app/).
 #
-# Installs this project as a package (so `import pile_forces` works with the
-# src-layout) plus the [web] extra (streamlit, plotly, kaleido). The core
-# deps (numpy, pandas, matplotlib, typst) come in transitively via the package.
+# Only third-party packages are listed here — the pile_forces package itself
+# is NOT installed on Streamlit Cloud; app.py adds src/ to sys.path so it
+# imports directly from source. This avoids editable-install / hot-reload
+# import errors and keeps the deploy simple.
 #
-# CLI users do NOT need this file — install via uv instead (see README).
-.[web]
+# NOTE: this project intentionally does NOT commit uv.lock, because Streamlit
+# Cloud would otherwise run `uv sync` (editable install + drops [web] extras),
+# which breaks the app. Without a lockfile, Cloud uses this requirements.txt.
+#
+# CLI users do NOT need this file — install via uv (see README).
+
+streamlit>=1.30
+plotly>=5.18
+# kaleido pinned <1.0: v1.x needs a separate Chrome/Chromium install (absent
+# on Streamlit Cloud). 0.2.x bundles its own static binary.
+kaleido>=0.2.1,<1.0
+numpy>=1.24
+pandas>=2.0
+matplotlib>=3.8
+typst>=0.12
