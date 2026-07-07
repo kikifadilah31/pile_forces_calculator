@@ -19,6 +19,8 @@ _COLOR_TENSION = "rgba(59, 130, 246, 0.85)"          # cool blue
 _COLOR_CENTROID = "rgba(250, 204, 21, 1.0)"          # gold
 _COLOR_PILE_MARKER = "rgba(100, 116, 139, 0.8)"      # slate
 _COLOR_ARROW = "rgba(16, 185, 129, 0.9)"             # emerald
+_COLOR_PILECAP = "rgba(21, 128, 61, 1.0)"            # green  — pilecap boundary
+_COLOR_PILE_OUTLINE = "rgba(29, 78, 216, 0.9)"       # blue   — true-scale pile footprint
 _COLOR_BG = "rgba(255, 255, 255, 1.0)"               # white
 _COLOR_GRID = "rgba(203, 213, 225, 0.5)"             # light slate grid
 _COLOR_TEXT = "rgba(15, 23, 42, 1.0)"                # dark text
@@ -65,6 +67,47 @@ def _base_layout(title: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Shared overlays: pilecap boundary + true-scale pile outlines
+# ---------------------------------------------------------------------------
+
+def _add_pilecap_boundary(fig: go.Figure, boundary_xy) -> None:
+    """Draw the pilecap outline as a closed green polyline (data-space, m)."""
+    if boundary_xy is None or len(boundary_xy) < 3:
+        return
+    pts = np.asarray(boundary_xy, dtype=float)
+    if not np.allclose(pts[0], pts[-1]):
+        pts = np.vstack([pts, pts[0]])
+    fig.add_trace(go.Scatter(
+        x=pts[:, 0], y=pts[:, 1], mode="lines",
+        line=dict(color=_COLOR_PILECAP, width=2.5),
+        name="Pilecap boundary", hoverinfo="skip",
+    ))
+
+
+def _add_pile_outlines(fig: go.Figure, x_vals, y_vals, pile_shape: str, pile_dim: float) -> None:
+    """Draw each pile's true footprint (diameter/side) as a dashed blue outline."""
+    if not pile_dim or pile_dim <= 0:
+        return
+    half = pile_dim / 2.0
+    first = True
+    for x, y in zip(x_vals, y_vals, strict=True):
+        if pile_shape == "Square":
+            xs = [x - half, x + half, x + half, x - half, x - half]
+            ys = [y - half, y - half, y + half, y + half, y - half]
+        else:
+            theta = np.linspace(0, 2 * np.pi, 48)
+            xs = x + half * np.cos(theta)
+            ys = y + half * np.sin(theta)
+        fig.add_trace(go.Scatter(
+            x=xs, y=ys, mode="lines",
+            line=dict(color=_COLOR_PILE_OUTLINE, width=1.5, dash="dash"),
+            name="Pile (actual size)", legendgroup="pile_outline",
+            showlegend=first, hoverinfo="skip",
+        ))
+        first = False
+
+
+# ---------------------------------------------------------------------------
 # Lateral Force Vector Plot
 # ---------------------------------------------------------------------------
 
@@ -73,6 +116,9 @@ def plot_lateral_vectors(
     centroid: tuple[float, float],
     show_labels: bool = True,
     unit: str = "kN",
+    pile_shape: str = "Circle",
+    pile_dim: float = 0.0,
+    pilecap_boundary=None,
 ) -> go.Figure:
     """Create 2D top-down plot with lateral force vector arrows.
 
@@ -83,6 +129,8 @@ def plot_lateral_vectors(
     centroid : (x_c, y_c) tuple
     show_labels : whether to show H_Resultant text near arrow tips
     unit : display unit string for labels
+    pile_shape, pile_dim : draw each pile's true footprint outline (m)
+    pilecap_boundary : (n, 2) polygon of the pilecap outline, or None
 
     Returns
     -------
@@ -91,6 +139,7 @@ def plot_lateral_vectors(
     lc_id = df_lc_subset["LC_ID"].iloc[0] if "LC_ID" in df_lc_subset.columns else "N/A"
 
     fig = go.Figure()
+    _add_pilecap_boundary(fig, pilecap_boundary)
 
     # --- Pile markers ---
     fig.add_trace(go.Scatter(
@@ -165,6 +214,8 @@ def plot_lateral_vectors(
                 borderpad=2,
             ))
 
+    _add_pile_outlines(fig, df_lc_subset["X"], df_lc_subset["Y"], pile_shape, pile_dim)
+
     layout = _base_layout(f"Lateral Force Vectors — LC: {lc_id}")
     layout["annotations"] = annotations
 
@@ -181,6 +232,9 @@ def plot_axial_bubbles(
     centroid: tuple[float, float],
     show_labels: bool = True,
     unit: str = "kN",
+    pile_shape: str = "Circle",
+    pile_dim: float = 0.0,
+    pilecap_boundary=None,
 ) -> go.Figure:
     """Create bubble plot for axial forces — size ∝ |Axial|, color = tension/compression.
 
@@ -191,6 +245,8 @@ def plot_axial_bubbles(
     centroid : (x_c, y_c)
     show_labels : show force values inside bubbles
     unit : display unit
+    pile_shape, pile_dim : draw each pile's true footprint outline (m)
+    pilecap_boundary : (n, 2) polygon of the pilecap outline, or None
 
     Returns
     -------
@@ -208,6 +264,7 @@ def plot_axial_bubbles(
     # (Per-trace masks below apply the colors; no combined array needed here.)
 
     fig = go.Figure()
+    _add_pilecap_boundary(fig, pilecap_boundary)
 
     # --- Compression piles ---
     mask_comp = df_lc_subset["Axial_Force"] >= 0
@@ -299,6 +356,8 @@ def plot_axial_bubbles(
                 borderpad=2,
             ))
 
+    _add_pile_outlines(fig, df_lc_subset["X"], df_lc_subset["Y"], pile_shape, pile_dim)
+
     layout = _base_layout(f"Axial Force Distribution — LC: {lc_id}")
     layout["annotations"] = annotations
 
@@ -316,12 +375,16 @@ def plot_envelope_axial(
     env_type: str = "Max",
     show_labels: bool = True,
     unit: str = "kN",
+    pile_shape: str = "Circle",
+    pile_dim: float = 0.0,
+    pilecap_boundary=None,
 ) -> go.Figure:
     """Create bubble plot for Envelope Axial Forces.
 
     env_type: "Max" (Max Compression) or "Min" (Max Tension)
     """
     fig = go.Figure()
+    _add_pilecap_boundary(fig, pilecap_boundary)
 
     col = "Max_Compression" if env_type == "Max" else "Max_Tension"
     lc_col = "LC_Max_Comp" if env_type == "Max" else "LC_Max_Tens"
@@ -391,6 +454,8 @@ def plot_envelope_axial(
                 borderpad=2,
             ))
 
+    _add_pile_outlines(fig, df_envelope["X"], df_envelope["Y"], pile_shape, pile_dim)
+
     layout = _base_layout(f"Envelope Axial — {title_suffix}")
     layout["annotations"] = annotations
 
@@ -404,12 +469,16 @@ def plot_envelope_lateral(
     env_type: str = "Max",
     show_labels: bool = True,
     unit: str = "kN",
+    pile_shape: str = "Circle",
+    pile_dim: float = 0.0,
+    pilecap_boundary=None,
 ) -> go.Figure:
     """Create vector plot for Envelope Lateral Forces.
 
     env_type: "Max" (Max Lateral) or "Min" (Min Lateral)
     """
     fig = go.Figure()
+    _add_pilecap_boundary(fig, pilecap_boundary)
 
     res_col = "Max_Lateral" if env_type == "Max" else "Min_Lateral"
     hx_col = "Max_Lat_Hx" if env_type == "Max" else "Min_Lat_Hx"
@@ -475,6 +544,8 @@ def plot_envelope_lateral(
                 bordercolor="rgba(148, 163, 184, 0.5)",
                 borderpad=2,
             ))
+
+    _add_pile_outlines(fig, x_vals, y_vals, pile_shape, pile_dim)
 
     layout = _base_layout(f"Envelope Lateral Vectors — {title_suffix}")
     layout["annotations"] = annotations

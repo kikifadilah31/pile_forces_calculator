@@ -157,7 +157,8 @@ Versi web sudah **ter-host dan siap pakai langsung di browser — tanpa instalas
 Aplikasi web punya 6 tab: **Input Data**, **Results**, **Lateral Vectors**, **Axial Bubbles**, **Envelope**, dan **Report**. Fitur khusus web:
 
 - Input tabel interaktif (copy-paste dari Excel) atau upload CSV.
-- Plot Plotly interaktif (zoom, hover, download PNG).
+- Plot Plotly interaktif (zoom, hover, download PNG) — dengan **boundary pilecap (hijau)** & **outline dimensi pile (biru putus-putus)**, sama seperti versi CLI.
+- **Pilecap tak beraturan**: aktifkan "Custom pilecap (irregular shape)" di sidebar, lalu isi titik polygon (tabel atau upload CSV `[X, Y]`).
 - **Simpan/Muat proyek** sebagai file `.json` (menyimpan semua parameter + tabel).
 - Generate & unduh laporan PDF.
 
