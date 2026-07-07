@@ -1,19 +1,26 @@
 [project]
 name = "pile-forces-calculator"
 version = "0.2.0"
-description = "Pile Forces Calculator — distributes structural reaction forces into individual pile foundation forces (Streamlit app + CLI)"
+description = "Pile Forces Calculator — distributes structural reaction forces into individual pile foundation forces (CLI + hosted Streamlit app)"
 requires-python = ">=3.11"
+# Core dependencies: exactly what the CLI needs, kept lean so
+# `uvx` / `uv tool install` stays fast. The Streamlit web app's extra
+# packages live under the optional [web] extra (see below).
 dependencies = [
     "numpy>=1.24",
     "pandas>=2.0",
     "matplotlib>=3.8",
-    "plotly>=5.18",
-    "kaleido>=0.2.1",
     "typst>=0.12",
-    "streamlit>=1.30",
 ]
 
 [project.optional-dependencies]
+# Streamlit web frontend (hosted at https://pileforcescalculator.streamlit.app/).
+# Also used by requirements.txt for the Streamlit Cloud deployment.
+web = [
+    "streamlit>=1.30",
+    "plotly>=5.18",
+    "kaleido>=0.2.1",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6",
@@ -36,7 +43,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-ignore = ["E501"]  # line length enforced softly; long f-strings in reporter/config
+ignore = ["E501"]  # long f-strings in reporter/config are intentional
 
 [tool.mypy]
 python_version = "3.11"
