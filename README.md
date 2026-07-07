@@ -117,25 +117,47 @@ pile-forces --help
 
 | Flag | Wajib? | Keterangan |
 |------|--------|------------|
-| `--piles CSV` | ✅ | Koordinat tiang `[Pile_ID, X, Y]` (m) |
-| `--load-cases CSV` | ✅ | Load cases `[LC_ID, Fx, Fy, Fz, Mx, My, Mz]` (kN, kN·m) |
+| `--piles CSV/XLSX` | ✅ | Koordinat tiang `[Pile_ID, X, Y]` (m). Menerima **CSV atau Excel** |
+| `--load-cases CSV/XLSX` | ✅ | Load cases `[LC_ID, Fx, Fy, Fz, Mx, My, Mz]` (kN, kN·m) |
 | `--params JSON` | ➖ | Parameter desain (opsional) |
-| `--pilecap CSV` | ➖ | Polygon pilecap tak beraturan `[X, Y]` (m). Bila kosong → rectangle `pilecap_length × pilecap_width` terpusat di centroid |
+| `--pilecap CSV/XLSX` | ➖ | Polygon pilecap tak beraturan `[X, Y]` (m). Bila kosong → rectangle `pilecap_length × pilecap_width` terpusat di centroid |
 
 **Output:**
 
 | Flag | Default | Keterangan |
 |------|---------|------------|
 | `--output DIR` | `output` | Folder induk untuk hasil ber-timestamp |
+| `--excel` | (off) | Tulis juga `results.xlsx` (sheet Master + Envelope) |
 | `--no-labels` | (off) | Sembunyikan teks nilai gaya di plot |
 | `--no-report` | (off) | Lewati pembuatan PDF Typst |
 | `--report-title TEKS` | "Pile Forces Analysis Report" | Judul di PDF |
+
+**Capacity check (kapasitas izin/allowable, kN):**
+
+| Flag | Keterangan |
+|------|------------|
+| `--check-capacity` | Aktifkan pengecekan DCR |
+| `--cap-axial-comp` / `--cap-axial-tension` / `--cap-lateral` | Kapasitas izin per tiang (isi ≥ 1 yang > 0) |
+
+**Analisis & metadata:**
+
+| Flag | Keterangan |
+|------|------------|
+| `--no-ixy` | Matikan suku product-of-inertia (pakai rumus per-sumbu klasik). Default: Ixy aktif |
+| `--project-name` / `--engineer` / `--revision` | Metadata proyek untuk laporan PDF |
 
 **Override parameter desain** (menimpa `--params` / default):
 `--pilecap-length`, `--pilecap-width`, `--pilecap-height`, `--gamma-concrete`,
 `--soil-height`, `--gamma-soil`, `--pile-shape {Circle,Square}`, `--pile-dim`,
 `--pile-length`, `--gamma-pile`, `--centroid {Auto,Manual}`, `--xc`, `--yc`,
 `--unit {kN,Ton}`.
+
+Contoh capacity check + Excel + metadata:
+```bash
+pile-forces --piles input/piles.csv --load-cases input/load_cases.csv --params input/params.json \
+    --check-capacity --cap-axial-comp 1500 --cap-axial-tension 300 --cap-lateral 80 \
+    --excel --project-name "Jembatan X" --engineer "KFT" --revision "R1"
+```
 
 ### Urutan prioritas parameter (berlapis)
 
@@ -158,7 +180,11 @@ Aplikasi web punya 6 tab: **Input Data**, **Results**, **Lateral Vectors**, **Ax
 
 - Input tabel interaktif (copy-paste dari Excel) atau upload CSV.
 - Plot Plotly interaktif (zoom, hover, download PNG) — dengan **boundary pilecap (hijau)** & **outline dimensi pile (biru putus-putus)**, sama seperti versi CLI.
-- **Pilecap tak beraturan**: aktifkan "Custom pilecap (irregular shape)" di sidebar, lalu isi titik polygon (tabel atau upload CSV `[X, Y]`).
+- **Pilecap tak beraturan**: aktifkan "Custom pilecap (irregular shape)" di sidebar, lalu isi titik polygon (tabel atau upload CSV/Excel `[X, Y]`).
+- **Capacity Check (DCR)**: aktifkan di sidebar + isi kapasitas izin → tab **🛡️ Capacity Check** (tabel DCR, verdict OK/INADEQUATE, download).
+- **Toggle Ixy** (grup asimetris) di sidebar.
+- **Excel**: upload input `.xlsx`, dan unduh hasil sebagai `.xlsx` (Master + Envelope).
+- **Metadata laporan** (project/engineer/revision) di tab Report.
 - **Simpan/Muat proyek** sebagai file `.json` (menyimpan semua parameter + tabel).
 - Generate & unduh laporan PDF.
 
@@ -242,9 +268,19 @@ X,Y
   "centroid_mode": "Auto",
   "x_centroid": 0.0,
   "y_centroid": 0.0,
+  "apply_ixy": true,
+  "check_capacity": false,
+  "cap_axial_comp": 0.0,
+  "cap_axial_tension": 0.0,
+  "cap_lateral": 0.0,
+  "project_name": "",
+  "engineer": "",
+  "revision": "",
   "output_unit": "kN"
 }
 ```
+
+> File input (`--piles`, `--load-cases`, `--pilecap`) menerima **CSV maupun Excel (`.xlsx`)** — dispatch otomatis dari ekstensi.
 
 **Validasi fail-fast:** jika kolom hilang, ada nilai non-numerik/kosong, `Pile_ID`/`LC_ID` duplikat, atau dimensi ≤ 0 → program **berhenti dengan pesan jelas** (bukan diam-diam menghasilkan angka salah).
 
@@ -264,6 +300,10 @@ X,Y
 | `gamma_pile` | 24.0 | kN/m³ | Berat jenis tiang |
 | `centroid_mode` | `Auto` | — | `Auto` (rata-rata koordinat) atau `Manual` |
 | `x_centroid` / `y_centroid` | 0.0 / 0.0 | m | Dipakai jika `centroid_mode = Manual` |
+| `apply_ixy` | `true` | — | Sertakan suku product-of-inertia (grup asimetris). Matikan untuk bandingkan dengan rumus per-sumbu klasik |
+| `check_capacity` | `false` | — | Aktifkan pengecekan DCR (kapasitas izin) |
+| `cap_axial_comp` / `cap_axial_tension` / `cap_lateral` | 0.0 | kN | Kapasitas **izin** per tiang (isi ≥ 1 yang > 0 saat check aktif) |
+| `project_name` / `engineer` / `revision` | "" | — | Metadata untuk laporan PDF |
 | `output_unit` | `kN` | — | Satuan output: `kN` atau `Ton` (1 Ton = 9.81 kN) |
 
 ---
@@ -285,9 +325,13 @@ output/pile_forces_YYYYMMDD_HHMMSS/
 │   ├── env_max_tension.png
 │   ├── env_max_lateral.png
 │   └── env_min_lateral.png
-├── SUMMARY.md            # ringkasan auditable (nilai antara + governing)
+├── SUMMARY.md            # ringkasan auditable (nilai antara + governing + verdict kapasitas)
+├── results.xlsx          # (bila --excel) workbook Master + Envelope
 └── Pile_Analysis_Report.pdf   # laporan Typst (kecuali --no-report)
 ```
+
+Bila **capacity check aktif**, `master_output.csv` & `envelope.csv` mendapat kolom tambahan
+`DCR_Comp, DCR_Tension, DCR_Lateral, DCR_Max, Status` (governing `Max_DCR` + `Status` di envelope).
 
 **`run_manifest.json`** mencatat: versi tool, timestamp, versi Python & dependency, **hash SHA-256 tiap file input**, seluruh parameter & argumen, serta metode/standar yang dipakai — sehingga hasil bisa direproduksi dan ditelusuri kapan pun.
 
@@ -310,8 +354,26 @@ W_tiang   = A_tiang × L_tiang × γ_tiang
 **Gaya aksial tiap tiang i:**
 
 ```
-P_i = (Fz_aksi + W_pilecap + W_soil)/n  −  Mx_aksi·y_i/Σy²  +  My_aksi·x_i/Σx²  +  W_tiang
+P_i = (Fz_aksi + W_pilecap + W_soil)/n  +  b·x_i + c·y_i  +  W_tiang
+
+dengan (biaxial + product of inertia):
+  Ixx=Σy², Iyy=Σx², Ixy=Σ(x·y), det = Ixx·Iyy − Ixy²
+  b = (My·Ixx + Mx·Ixy)/det ,  c = (−Mx·Iyy − My·Ixy)/det
 ```
+
+Untuk grup **simetris** (Ixy=0) ini menyederhana jadi bentuk klasik
+`−Mx·y_i/Σy² + My·x_i/Σx²`. Suku Ixy hanya berpengaruh pada layout **asimetris**
+dan bisa dimatikan (`--no-ixy` / checkbox) untuk perbandingan.
+
+**Capacity check (DCR, basis kapasitas izin):**
+
+```
+DCR_kompresi = P_i (tekan) / cap_axial_comp
+DCR_tarik    = |P_i (tarik)| / cap_axial_tension
+DCR_lateral  = H_i / cap_lateral
+DCR_max      = maks(ketiganya)   →  Status = OK bila ≤ 1.0, else INADEQUATE
+```
+Kapasitas 0 = komponen tak dicek. Semua dihitung di kN (rasio, tak terpengaruh unit output).
 
 **Gaya lateral + torsi tiap tiang i:**
 
@@ -369,6 +431,7 @@ pile_forces_calculator/
 ├── input/                      # Contoh data siap pakai
 │   ├── piles.csv
 │   ├── load_cases.csv
+│   ├── pilecap.csv             # contoh pilecap tak beraturan
 │   └── params.json
 ├── src/pile_forces/            # ── INTI BERSAMA (shared core) ──
 │   ├── config.py               # Konstanta terpusat (satuan, default, warna, toleransi)
@@ -385,8 +448,8 @@ pile_forces_calculator/
 ├── tests/                      # Uji unit, validasi, integrasi, golden-file
 │   ├── data/                   # Fixture test (terpisah dari input/)
 │   └── golden/                 # Hasil acuan untuk regression test
-├── pyproject.toml
-└── uv.lock
+├── requirements.txt            # deps untuk deploy Streamlit Cloud
+└── pyproject.toml
 ```
 
 Prinsip: `math_engine.py` murni (tidak impor pandas/matplotlib/argparse); `renderer.py` tidak melakukan kalkulasi; `cli.py` hanya orkestrator. Satu modul = satu tanggung jawab.
@@ -416,10 +479,15 @@ Fixture test sengaja dipisah di `tests/data/` sehingga mengubah data di `input/`
 
 - **Pilecap dianggap kaku sempurna** (semua tiang berbagi bidang perpindahan yang sama) — tanpa interaksi tanah-struktur atau variasi kekakuan antar tiang.
 - **Berat tanah** dihitung memakai luas penuh pilecap (konservatif) — pengurangan luas pier belum diterapkan (`TODO` di `math_engine.calc_soil_weight`).
-- Model bersifat elastis linier; tidak mencakup analisis daya dukung tanah atau kapasitas geoteknik tiang.
+- Model bersifat elastis linier; tidak mencakup analisis daya dukung tanah atau kapasitas geoteknik tiang. **Capacity check** membandingkan gaya hasil dengan kapasitas **izin** yang Anda input (bukan menghitung kapasitas tiang itu sendiri).
+- Semua tiang berbagi satu bentuk/dimensi; belum mendukung ukuran tiang campuran atau tiang miring (batter).
 
 ---
 
 ## Versi
+
+**v0.3** — Capacity check + DCR (basis kapasitas izin, verdict OK/INADEQUATE);
+koreksi product-of-inertia (Ixy) untuk grup asimetris dengan toggle; Excel
+(`.xlsx`) import/export; metadata proyek di laporan PDF.
 
 **v0.2** — Menambahkan CLI penuh (matplotlib + PDF Typst) di atas inti bersama `src/pile_forces/`, di samping aplikasi Streamlit. Satuan internal kN·m dipertahankan agar hasil identik dengan v0.1.

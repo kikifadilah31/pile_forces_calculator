@@ -6,9 +6,10 @@ Combines the pure formulas in `math_engine` with the tabular data model
 governing-load-case envelope. All values in kN / m (internal unit system).
 """
 
+import numpy as np
 import pandas as pd
 
-from . import math_engine
+from . import config, math_engine
 
 
 def build_master_output(
@@ -62,6 +63,10 @@ def build_master_output(
     sum_y_sq = float((y_rel ** 2).sum())
     i_polar = math_engine.calc_polar_inertia(x_rel, y_rel)
 
+    # Product of inertia for asymmetric groups; forced to 0 when apply_ixy is
+    # off so the axial distribution falls back to the classic per-axis form.
+    sum_xy = float((x_rel * y_rel).sum()) if params.get("apply_ixy", True) else 0.0
+
     n_piles = len(df_piles)
     pile_ids = df_piles["Pile_ID"].to_numpy()
 
@@ -75,7 +80,7 @@ def build_master_output(
         axial_arr = math_engine.calc_axial_forces(
             fz_act=fz_a, mx_act=mx_a, my_act=my_a, n_piles=n_piles,
             x_rel=x_rel, y_rel=y_rel, sum_x_sq=sum_x_sq, sum_y_sq=sum_y_sq,
-            w_pilecap=w_pilecap, w_soil=w_soil, w_pile=w_pile,
+            w_pilecap=w_pilecap, w_soil=w_soil, w_pile=w_pile, sum_xy=sum_xy,
         )
         hx_arr, hy_arr, h_res_arr = math_engine.calc_lateral_forces(
             fx_act=fx_a, fy_act=fy_a, mz_act=mz_a, n_piles=n_piles,
@@ -142,4 +147,41 @@ def build_envelope(df_master: pd.DataFrame) -> pd.DataFrame:
         min_lat[["Pile_ID", "Min_Lateral", "Min_Lat_Hx", "Min_Lat_Hy", "LC_Min_Lat"]], on="Pile_ID",
     )
 
+    # Governing DCR per pile (only when capacity check produced DCR columns)
+    if "DCR_Max" in df_master.columns:
+        idx_max_dcr = grouped["DCR_Max"].idxmax()
+        max_dcr = df_master.loc[idx_max_dcr, ["Pile_ID", "DCR_Max", "Status", "LC_ID"]].rename(
+            columns={"DCR_Max": "Max_DCR", "LC_ID": "LC_Max_DCR"},
+        )
+        envelope = envelope.merge(
+            max_dcr[["Pile_ID", "Max_DCR", "LC_Max_DCR", "Status"]], on="Pile_ID",
+        )
+
     return envelope.reset_index(drop=True)
+
+
+def build_dcr(df_master: pd.DataFrame, params: dict) -> pd.DataFrame:
+    """Append demand-capacity-ratio columns to the master table.
+
+    Returns df_master unchanged when `check_capacity` is off, so downstream
+    output (and golden files) are unaffected by default. DCR is computed on
+    the internal kN forces, so ratios are unit-independent.
+
+    Adds columns: DCR_Comp, DCR_Tension, DCR_Lateral, DCR_Max, Status
+    (Status = OK | INADEQUATE against DCR limit 1.0).
+    """
+    if not params.get("check_capacity"):
+        return df_master
+
+    dcr_comp, dcr_tens, dcr_lat, dcr_max = math_engine.calc_dcr(
+        df_master["Axial_Force"].to_numpy(dtype=float),
+        df_master["H_Resultant"].to_numpy(dtype=float),
+        params["cap_axial_comp"], params["cap_axial_tension"], params["cap_lateral"],
+    )
+    out = df_master.copy()
+    out["DCR_Comp"] = dcr_comp
+    out["DCR_Tension"] = dcr_tens
+    out["DCR_Lateral"] = dcr_lat
+    out["DCR_Max"] = dcr_max
+    out["Status"] = np.where(dcr_max > config.DCR_LIMIT, config.STATUS_INADEQUATE, config.STATUS_OK)
+    return out

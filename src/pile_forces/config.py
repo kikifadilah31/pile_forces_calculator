@@ -43,6 +43,14 @@ ENVELOPE_FORCE_COLUMNS = [
 VALID_PILE_SHAPES = ("Circle", "Square")
 VALID_CENTROID_MODES = ("Auto", "Manual")
 
+# DCR (demand-capacity ratio) columns — dimensionless ratios + text status,
+# so they are NOT unit-converted. Appended to master/envelope only when
+# check_capacity is enabled.
+DCR_COLUMNS = ["DCR_Comp", "DCR_Tension", "DCR_Lateral", "DCR_Max", "Status"]
+STATUS_OK = "OK"
+STATUS_INADEQUATE = "INADEQUATE"
+DCR_LIMIT = 1.0
+
 # ---------------------------------------------------------------------------
 # Design Parameter Defaults
 # (base layer of the merge: config -> params.json -> CLI flags)
@@ -65,6 +73,17 @@ DEFAULT_PARAMS = {
     "centroid_mode": "Auto",    # Auto | Manual
     "x_centroid": 0.0,          # m (used only when centroid_mode == Manual)
     "y_centroid": 0.0,          # m
+    # Analysis options
+    "apply_ixy": True,          # include product-of-inertia term (asymmetric groups)
+    # Capacity check (allowable capacities per pile, kN). 0 = not set.
+    "check_capacity": False,
+    "cap_axial_comp": 0.0,      # allowable axial compression capacity [kN]
+    "cap_axial_tension": 0.0,   # allowable axial tension (uplift) capacity [kN]
+    "cap_lateral": 0.0,         # allowable lateral capacity [kN]
+    # Report metadata (optional, blank = omitted)
+    "project_name": "",
+    "engineer": "",
+    "revision": "",
     # Output
     "output_unit": "kN",        # kN | Ton
 }

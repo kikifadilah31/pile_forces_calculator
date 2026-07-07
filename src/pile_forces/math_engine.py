@@ -169,27 +169,49 @@ def calc_axial_forces(
     w_pilecap: float,
     w_soil: float,
     w_pile: float,
+    sum_xy: float = 0.0,
 ) -> np.ndarray:
     """Axial force in each pile [kN] (vectorized).
 
-    P_axial,i = P_total/n - Mx_act*y_i/Sum(y^2) + My_act*x_i/Sum(x^2) + W_pile
+    General biaxial-bending distribution for a rigid cap, including the pile
+    group product of inertia (asymmetric / irregular layouts):
+
+        Ixx = Sum(y^2), Iyy = Sum(x^2), Ixy = Sum(x*y), det = Ixx*Iyy - Ixy^2
+        b = (My*Ixx + Mx*Ixy) / det        # coefficient of x_i
+        c = (-Mx*Iyy - My*Ixy) / det       # coefficient of y_i
+        P_axial,i = P_total/n + b*x_i + c*y_i + W_pile
     where P_total = Fz_act + W_pilecap + W_soil.
 
+    When Ixy = 0 (symmetric group) this reduces exactly to the classic
+    per-axis form  P/n - Mx*y_i/Sum(y^2) + My*x_i/Sum(x^2) + W_pile.
+    Pass sum_xy=0.0 to force that reduced form (the `apply_ixy=False` toggle).
+
     Units: forces [kN], moments [kN·m], coordinates [m], weights [kN].
-    Zero-division protection: a bending term drops to 0 when its
-    Sum(coord^2) is ~0 (degenerate single-line geometry).
+    Zero-division protection: falls back to the per-axis form when the coupled
+    determinant is ~0 (degenerate single-line geometry).
     """
     p_total = fz_act + w_pilecap + w_soil
     axial_base = p_total / n_piles
 
-    # Safe denominators: when Sum(coord^2) ~ 0 the bending term is zeroed, so
-    # the substituted 1.0 divisor is never used (avoids a 0/0 warning).
-    denom_y = sum_y_sq if sum_y_sq > config.ZERO_TOL else 1.0
-    denom_x = sum_x_sq if sum_x_sq > config.ZERO_TOL else 1.0
-    mx_contrib = np.where(sum_y_sq > config.ZERO_TOL, -(mx_act * y_rel) / denom_y, 0.0)
-    my_contrib = np.where(sum_x_sq > config.ZERO_TOL, (my_act * x_rel) / denom_x, 0.0)
+    ixx = sum_y_sq  # second moment about x-axis (uses y distances)
+    iyy = sum_x_sq  # second moment about y-axis (uses x distances)
+    ixy = sum_xy
+    det = ixx * iyy - ixy * ixy
 
-    return axial_base + mx_contrib + my_contrib + w_pile
+    if det > config.ZERO_TOL:
+        b = (my_act * ixx + mx_act * ixy) / det
+        c = (-mx_act * iyy - my_act * ixy) / det
+        moment_contrib = b * x_rel + c * y_rel
+    else:
+        # Degenerate geometry (e.g. collinear piles): drop each bending term
+        # whose Sum(coord^2) vanishes — matches the original per-axis handling.
+        denom_y = sum_y_sq if sum_y_sq > config.ZERO_TOL else 1.0
+        denom_x = sum_x_sq if sum_x_sq > config.ZERO_TOL else 1.0
+        mx_contrib = np.where(sum_y_sq > config.ZERO_TOL, -(mx_act * y_rel) / denom_y, 0.0)
+        my_contrib = np.where(sum_x_sq > config.ZERO_TOL, (my_act * x_rel) / denom_x, 0.0)
+        moment_contrib = mx_contrib + my_contrib
+
+    return axial_base + moment_contrib + w_pile
 
 
 def calc_lateral_forces(
@@ -222,3 +244,43 @@ def calc_lateral_forces(
     h_resultant = np.sqrt(hx_arr ** 2 + hy_arr ** 2)
 
     return hx_arr, hy_arr, h_resultant
+
+
+# ---------------------------------------------------------------------------
+# Capacity check — demand/capacity ratios (allowable-capacity basis)
+# ---------------------------------------------------------------------------
+
+def calc_dcr(
+    axial: np.ndarray,
+    h_resultant: np.ndarray,
+    cap_comp: float,
+    cap_tens: float,
+    cap_lat: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Demand-capacity ratios against ALLOWABLE capacities (vectorized).
+
+    DCR = demand / allowable_capacity (limit 1.0). All in kN so ratios are
+    dimensionless. A capacity given as <= 0 means "not checked" -> that ratio
+    is 0 (ignored in the max), never a division error.
+
+    - dcr_comp : compression only (axial > 0), = axial / cap_comp
+    - dcr_tens : tension only (axial < 0), = |axial| / cap_tens
+    - dcr_lat  : = H_resultant / cap_lat
+    - dcr_max  : element-wise max of the three
+
+    Returns (dcr_comp, dcr_tens, dcr_lat, dcr_max).
+    """
+    axial = np.asarray(axial, dtype=float)
+    h_resultant = np.asarray(h_resultant, dtype=float)
+
+    dcr_comp = np.where(
+        (cap_comp > 0) & (axial > 0), axial / (cap_comp if cap_comp > 0 else 1.0), 0.0,
+    )
+    dcr_tens = np.where(
+        (cap_tens > 0) & (axial < 0), -axial / (cap_tens if cap_tens > 0 else 1.0), 0.0,
+    )
+    dcr_lat = np.where(
+        cap_lat > 0, h_resultant / (cap_lat if cap_lat > 0 else 1.0), 0.0,
+    )
+    dcr_max = np.maximum.reduce([dcr_comp, dcr_tens, dcr_lat])
+    return dcr_comp, dcr_tens, dcr_lat, dcr_max

@@ -51,6 +51,28 @@ def test_custom_pilecap_polygon_changes_weight():
     assert (a_cus < a_def).all()
 
 
+def test_build_dcr_off_by_default_no_columns():
+    m = domain_engine.build_master_output(PILES, LC, PARAMS)
+    out = domain_engine.build_dcr(m, PARAMS)  # check_capacity off
+    assert "DCR_Max" not in out.columns  # golden/master unchanged when off
+
+
+def test_build_dcr_adds_columns_and_status():
+    params = dict(PARAMS)
+    params.update(check_capacity=True, cap_axial_comp=700.0, cap_axial_tension=300.0, cap_lateral=50.0)
+    m = domain_engine.build_master_output(PILES, LC, params)
+    out = domain_engine.build_dcr(m, params)
+    for col in ("DCR_Comp", "DCR_Tension", "DCR_Lateral", "DCR_Max", "Status"):
+        assert col in out.columns
+    assert out["Status"].isin(["OK", "INADEQUATE"]).all()
+    # Status consistent with DCR_Max vs 1.0
+    assert ((out["DCR_Max"] > 1.0) == (out["Status"] == "INADEQUATE")).all()
+    # Envelope gains governing DCR
+    e = domain_engine.build_envelope(out)
+    assert {"Max_DCR", "LC_Max_DCR", "Status"}.issubset(e.columns)
+    assert len(e) == len(PILES)
+
+
 def test_envelope_no_tension_forced_to_zero():
     """A heavy-compression-only case: every pile stays in compression -> tension cell = 0."""
     heavy = pd.DataFrame({

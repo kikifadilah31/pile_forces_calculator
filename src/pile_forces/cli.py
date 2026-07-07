@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     g_out.add_argument("--output", metavar="DIR", default=config.OUTPUT_FOLDER, help="Parent folder for the timestamped run.")
     g_out.add_argument("--no-labels", action="store_true", help="Hide force-value text on plots.")
     g_out.add_argument("--no-report", action="store_true", help="Skip Typst PDF report generation.")
+    g_out.add_argument("--excel", action="store_true", help="Also write results.xlsx (Master + Envelope sheets).")
     g_out.add_argument("--report-title", default="Pile Forces Analysis Report", help="Title on the PDF report.")
 
     # --- Design parameter overrides (highest precedence; unset -> None) ---
@@ -73,13 +74,34 @@ def build_parser() -> argparse.ArgumentParser:
     g_p.add_argument("--xc", type=float, dest="x_centroid")
     g_p.add_argument("--yc", type=float, dest="y_centroid")
     g_p.add_argument("--unit", choices=config.VALID_OUTPUT_UNITS, dest="output_unit")
+    g_p.add_argument("--no-ixy", action="store_true",
+                     help="Disable the product-of-inertia term (use classic per-axis distribution).")
+
+    # --- Capacity check (allowable-capacity basis) ---
+    g_c = parser.add_argument_group("capacity check (allowable capacities, kN)")
+    g_c.add_argument("--check-capacity", action="store_true", dest="opt_check_capacity",
+                     help="Enable demand-capacity ratio (DCR) check.")
+    g_c.add_argument("--cap-axial-comp", type=float, dest="cap_axial_comp")
+    g_c.add_argument("--cap-axial-tension", type=float, dest="cap_axial_tension")
+    g_c.add_argument("--cap-lateral", type=float, dest="cap_lateral")
+
+    # --- Report metadata (optional) ---
+    g_m = parser.add_argument_group("report metadata (optional)")
+    g_m.add_argument("--project-name", dest="project_name")
+    g_m.add_argument("--engineer", dest="engineer")
+    g_m.add_argument("--revision", dest="revision")
 
     return parser
 
 
 def _overrides_from_args(args: argparse.Namespace) -> dict:
     """Collect only the design-parameter flags from parsed args."""
-    return {key: getattr(args, key) for key in config.DEFAULT_PARAMS if getattr(args, key, None) is not None}
+    overrides = {key: getattr(args, key) for key in config.DEFAULT_PARAMS if getattr(args, key, None) is not None}
+    if getattr(args, "no_ixy", False):
+        overrides["apply_ixy"] = False
+    if getattr(args, "opt_check_capacity", False):
+        overrides["check_capacity"] = True
+    return overrides
 
 
 # ---------------------------------------------------------------------------
@@ -186,8 +208,12 @@ def run(args: argparse.Namespace) -> int:
 
         # --- Compute ---
         df_master = domain_engine.build_master_output(df_piles, df_lc, params, pilecap_poly)
+        df_master = domain_engine.build_dcr(df_master, params)
         df_envelope = domain_engine.build_envelope(df_master)
         logger.info("Computed %d pile x LC combinations; envelope for %d piles.", len(df_master), len(df_envelope))
+        if params.get("check_capacity") and "Status" in df_envelope.columns:
+            n_bad = int((df_envelope["Status"] == config.STATUS_INADEQUATE).sum())
+            logger.info("Capacity check: %d of %d piles INADEQUATE (DCR > 1.0).", n_bad, len(df_envelope))
 
         if params["centroid_mode"] == "Auto":
             centroid = (float(df_piles["X"].mean()), float(df_piles["Y"].mean()))
@@ -214,6 +240,10 @@ def run(args: argparse.Namespace) -> int:
         df_master_disp.to_csv(os.path.join(run_dir, "master_output.csv"), index=False)
         df_env_disp.to_csv(os.path.join(run_dir, "envelope.csv"), index=False)
         logger.info("Wrote master_output.csv and envelope.csv")
+
+        if args.excel:
+            io_utils.write_results_xlsx(os.path.join(run_dir, "results.xlsx"), df_master_disp, df_env_disp)
+            logger.info("Wrote results.xlsx")
 
         # --- Plots ---
         plot_paths = _render_all_plots(
