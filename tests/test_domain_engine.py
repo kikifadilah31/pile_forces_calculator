@@ -35,6 +35,22 @@ def test_envelope_matches_manual_groupby():
         assert np.isclose(e.loc[pid, "Max_Lateral"], grp["H_Resultant"].max(), rtol=config.VALIDATION_RTOL)
 
 
+def test_custom_pilecap_polygon_changes_weight():
+    """A custom pilecap polygon with a different plan area shifts the axial base.
+
+    The rectangle default (5x5 = 25 m²) vs a 2x2 = 4 m² square polygon change
+    W_pilecap and W_soil, hence P_total, hence every pile's axial force.
+    """
+    poly_small = pd.DataFrame({"X": [0.0, 2.0, 2.0, 0.0], "Y": [0.0, 0.0, 2.0, 2.0]})  # area 4 m²
+    m_default = domain_engine.build_master_output(PILES, LC, PARAMS)
+    m_custom = domain_engine.build_master_output(PILES, LC, PARAMS, pilecap_poly=poly_small)
+
+    # Smaller pilecap -> smaller added dead load -> smaller axial forces.
+    a_def = m_default[m_default["LC_ID"] == "LC1"]["Axial_Force"].to_numpy()
+    a_cus = m_custom[m_custom["LC_ID"] == "LC1"]["Axial_Force"].to_numpy()
+    assert (a_cus < a_def).all()
+
+
 def test_envelope_no_tension_forced_to_zero():
     """A heavy-compression-only case: every pile stays in compression -> tension cell = 0."""
     heavy = pd.DataFrame({

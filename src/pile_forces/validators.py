@@ -44,6 +44,20 @@ def validate_piles_df(df: pd.DataFrame) -> pd.DataFrame:
     return _coerce_numeric(df, config.PILE_NUMERIC_COLUMNS, name)
 
 
+def validate_pilecap_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Validate custom pilecap polygon vertices. Returns a numeric-typed copy.
+
+    Requires columns X, Y, at least 3 vertices, and no non-numeric/blank cells.
+    """
+    name = "pilecap polygon"
+    missing = set(config.PILECAP_COLUMNS) - set(df.columns)
+    if missing:
+        raise ValueError(f"[{name}] kolom hilang: {sorted(missing)}. Ditemukan: {list(df.columns)}")
+    if len(df) < 3:
+        raise ValueError(f"[{name}] minimal 3 titik diperlukan untuk membentuk polygon (diberikan: {len(df)}).")
+    return _coerce_numeric(df, config.PILECAP_COLUMNS, name)
+
+
 def validate_load_cases_df(df: pd.DataFrame) -> pd.DataFrame:
     """Validate load cases. Returns a cleaned, numeric-typed copy."""
     name = "load cases"

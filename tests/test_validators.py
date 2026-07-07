@@ -69,3 +69,21 @@ def test_params_bad_shape_raises():
 
 def test_params_defaults_valid():
     assert validators.validate_params(dict(config.DEFAULT_PARAMS)) is not None
+
+
+def test_pilecap_polygon_valid():
+    df = pd.DataFrame({"X": [0.0, 2.0, 2.0, 0.0], "Y": [0.0, 0.0, 2.0, 2.0]})
+    out = validators.validate_pilecap_df(df)
+    assert len(out) == 4
+
+
+def test_pilecap_polygon_too_few_points_raises():
+    df = pd.DataFrame({"X": [0.0, 2.0], "Y": [0.0, 0.0]})
+    with pytest.raises(ValueError, match="minimal 3"):
+        validators.validate_pilecap_df(df)
+
+
+def test_pilecap_polygon_missing_column_raises():
+    df = pd.DataFrame({"X": [0.0, 2.0, 1.0]})
+    with pytest.raises(ValueError, match="kolom hilang"):
+        validators.validate_pilecap_df(df)

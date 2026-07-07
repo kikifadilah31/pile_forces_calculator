@@ -120,6 +120,7 @@ pile-forces --help
 | `--piles CSV` | ✅ | Koordinat tiang `[Pile_ID, X, Y]` (m) |
 | `--load-cases CSV` | ✅ | Load cases `[LC_ID, Fx, Fy, Fz, Mx, My, Mz]` (kN, kN·m) |
 | `--params JSON` | ➖ | Parameter desain (opsional) |
+| `--pilecap CSV` | ➖ | Polygon pilecap tak beraturan `[X, Y]` (m). Bila kosong → rectangle `pilecap_length × pilecap_width` terpusat di centroid |
 
 **Output:**
 
@@ -202,6 +203,26 @@ LC2,-80.0,120.0,1400.0,-260.0,90.0,-60.0
 | `Mx`, `My`, `Mz` | angka | kN·m |
 
 > Nilai gaya adalah **reaksi** dari Midas — alat ini otomatis mengonversinya menjadi **aksi** untuk desain pondasi (lihat [§9](#9-konvensi-tanda--satuan)).
+
+### `pilecap.csv` — pilecap tak beraturan (opsional)
+
+Untuk pilecap **bukan persegi**, sediakan koordinat titik-titik polygon (urut mengelilingi tepi, tertutup otomatis):
+
+```csv
+X,Y
+-0.6,-0.6
+2.4,-0.6
+2.4,1.5
+0.9,2.6
+-0.6,1.5
+```
+
+| Kolom | Tipe | Satuan | Keterangan |
+|-------|------|--------|------------|
+| `X`, `Y` | angka | m | Titik sudut polygon (minimal 3) |
+
+- **Tanpa `--pilecap`** → pilecap dianggap **persegi** `pilecap_length × pilecap_width`, terpusat di centroid grup tiang.
+- **Dengan `--pilecap`** → boundary mengikuti polygon; **berat pilecap & tanah dihitung dari luas polygon aktual** (rumus shoelace), sehingga gambar dan perhitungan konsisten.
 
 ### `params.json` — parameter desain (opsional)
 
@@ -327,6 +348,7 @@ dengan  I_polar = Σx² + Σy²
 
 Kedua jenis diagram (aksial & lateral) menampilkan:
 
+- **Boundary pilecap** = garis **hijau** tertutup (rectangle untuk pilecap persegi, polygon untuk pilecap custom dari `pilecap.csv`).
 - **Bentuk tiang sesuai `pile_shape`** — lingkaran untuk Circle, kotak untuk Square.
 - **Garis putus-putus biru** = ukuran fisik tiang sebenarnya (diameter/sisi, skala nyata dalam meter), terpisah dari besaran gaya.
 - **Centroid** ditandai salib emas.
