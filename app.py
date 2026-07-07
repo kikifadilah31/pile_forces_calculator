@@ -29,7 +29,7 @@ from pile_forces.domain_engine import (
     build_master_output,
 )
 from pile_forces.io_utils import convert_units
-from pile_forces.math_engine import calc_centroid
+from pile_forces.math_engine import calc_centroid, close_polygon, rectangle_corners
 from pile_forces.plotly_viz import (
     export_figure_to_png,
     plot_axial_bubbles,
@@ -97,10 +97,19 @@ def _init_session_state():
         "output_unit": "kN",
         # UI
         "show_labels": True,
+        # Custom (irregular) pilecap
+        "pilecap_custom": False,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = val
+
+    # Default custom pilecap polygon vertices (used when pilecap_custom = True)
+    if "df_pilecap" not in st.session_state:
+        st.session_state["df_pilecap"] = pd.DataFrame({
+            "X": [-0.6, 3.6, 3.6, 1.5, -0.6],
+            "Y": [-0.6, -0.6, 2.4, 3.6, 2.4],
+        })
 
     # Default pile coordinates (4-pile group)
     if "df_piles" not in st.session_state:
@@ -143,7 +152,7 @@ with st.sidebar:
             "soil_height", "gamma_soil",
             "pile_shape", "pile_dim", "pile_length", "gamma_pile",
             "centroid_mode", "x_centroid", "y_centroid",
-            "output_unit",
+            "output_unit", "pilecap_custom",
         ]
     }
     json_str = export_state(
@@ -195,6 +204,38 @@ with st.sidebar:
         "γ Concrete (kN/m³)", value=st.session_state["gamma_concrete"],
         min_value=1.0, step=0.5, format="%.1f", key="inp_gc",
     )
+
+    # --- Custom (irregular) pilecap ---
+    st.session_state["pilecap_custom"] = st.checkbox(
+        "Custom pilecap (irregular shape)",
+        value=st.session_state["pilecap_custom"],
+        key="inp_pc_custom",
+        help="Define an irregular pilecap outline with polygon vertices. "
+             "When on, plan area (for pilecap & soil weight) uses the polygon "
+             "area instead of Length × Width.",
+    )
+    if st.session_state["pilecap_custom"]:
+        with st.expander("📁 Import pilecap polygon from CSV", expanded=False):
+            uploaded_pc_csv = st.file_uploader(
+                "Choose pilecap CSV [X, Y]", type=["csv"], key="upload_pilecap",
+            )
+            if uploaded_pc_csv is not None:
+                try:
+                    df_pc_up = pd.read_csv(uploaded_pc_csv)
+                    if {"X", "Y"}.issubset(df_pc_up.columns):
+                        st.session_state["df_pilecap"] = df_pc_up[["X", "Y"]]
+                        st.success("✅ Pilecap polygon loaded from CSV")
+                    else:
+                        st.error("❌ CSV harus memiliki kolom: X, Y")
+                except Exception as exc:
+                    st.error(f"❌ Error membaca CSV: {exc}")
+        st.caption("Titik sudut polygon (urut mengelilingi tepi, min. 3 titik):")
+        st.session_state["df_pilecap"] = st.data_editor(
+            st.session_state["df_pilecap"],
+            num_rows="dynamic",
+            width="stretch",
+            key="editor_pilecap",
+        )
 
     st.divider()
 
@@ -415,7 +456,17 @@ if can_calculate:
         df_piles = df_piles.dropna(subset=["Pile_ID", "X", "Y"])
         df_lc = df_lc.dropna(subset=["LC_ID", "Fx", "Fy", "Fz", "Mx", "My", "Mz"])
 
-        df_master = build_master_output(df_piles, df_lc, params)
+        # Optional custom (irregular) pilecap polygon
+        pilecap_poly = None
+        if st.session_state["pilecap_custom"]:
+            df_pc = st.session_state["df_pilecap"].copy()
+            for col in ["X", "Y"]:
+                df_pc[col] = pd.to_numeric(df_pc[col], errors="coerce")
+            df_pc = df_pc.dropna(subset=["X", "Y"])
+            if len(df_pc) >= 3:
+                pilecap_poly = df_pc
+
+        df_master = build_master_output(df_piles, df_lc, params, pilecap_poly)
         df_envelope = build_envelope(df_master)
 
         # Determine centroid for plots
@@ -423,6 +474,19 @@ if can_calculate:
             centroid = _centroid_of(df_piles)
         else:
             centroid = (params["x_centroid"], params["y_centroid"])
+
+        # Pilecap boundary polygon for the diagrams
+        if pilecap_poly is not None:
+            pilecap_boundary = close_polygon(pilecap_poly["X"], pilecap_poly["Y"])
+        else:
+            pilecap_boundary = rectangle_corners(
+                centroid[0], centroid[1],
+                params["pilecap_length"], params["pilecap_width"],
+            )
+
+        # Pile shape/size for the true-scale outline overlay
+        pile_shape = params["pile_shape"]
+        pile_dim = params["pile_dim"]
 
         unit = st.session_state["output_unit"]
 
@@ -497,6 +561,9 @@ with tab_lateral:
             centroid,
             show_labels=st.session_state["show_labels"],
             unit=unit,
+            pile_shape=pile_shape,
+            pile_dim=pile_dim,
+            pilecap_boundary=pilecap_boundary,
         )
 
         st.plotly_chart(
@@ -535,6 +602,9 @@ with tab_axial:
             centroid,
             show_labels=st.session_state["show_labels"],
             unit=unit,
+            pile_shape=pile_shape,
+            pile_dim=pile_dim,
+            pilecap_boundary=pilecap_boundary,
         )
 
         st.plotly_chart(
@@ -633,6 +703,7 @@ with tab_envelope:
         fig_env_comp = plot_envelope_axial(
             df_envelope_display, centroid, env_type="Max",
             show_labels=st.session_state["show_labels"], unit=unit,
+            pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
         )
         st.plotly_chart(
             fig_env_comp, width="stretch",
@@ -643,6 +714,7 @@ with tab_envelope:
         fig_env_tens = plot_envelope_axial(
             df_envelope_display, centroid, env_type="Min",
             show_labels=st.session_state["show_labels"], unit=unit,
+            pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
         )
         st.plotly_chart(
             fig_env_tens, width="stretch",
@@ -653,6 +725,7 @@ with tab_envelope:
         fig_env_lat_max = plot_envelope_lateral(
             df_envelope_display, centroid, env_type="Max",
             show_labels=st.session_state["show_labels"], unit=unit,
+            pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
         )
         st.plotly_chart(
             fig_env_lat_max, width="stretch",
@@ -663,6 +736,7 @@ with tab_envelope:
         fig_env_lat_min = plot_envelope_lateral(
             df_envelope_display, centroid, env_type="Min",
             show_labels=st.session_state["show_labels"], unit=unit,
+            pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
         )
         st.plotly_chart(
             fig_env_lat_min, width="stretch",
@@ -703,6 +777,7 @@ with tab_report:
                             fig_lat = plot_lateral_vectors(
                                 df_lc_subset, centroid,
                                 show_labels=True, unit=unit,
+                                pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
                             )
                             lat_path = os.path.join(tmp_dir, f"lateral_{lc_id}.png")
                             export_figure_to_png(fig_lat, lat_path)
@@ -712,28 +787,41 @@ with tab_report:
                             fig_ax = plot_axial_bubbles(
                                 df_lc_subset, centroid,
                                 show_labels=True, unit=unit,
+                                pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
                             )
                             ax_path = os.path.join(tmp_dir, f"axial_{lc_id}.png")
                             export_figure_to_png(fig_ax, ax_path)
                             plot_paths.append((ax_path, f"Axial Force Distribution — LC: {lc_id}"))
 
                         # Envelope Plots
-                        fig_env_comp = plot_envelope_axial(df_envelope_display, centroid, env_type="Max", unit=unit)
+                        fig_env_comp = plot_envelope_axial(
+                            df_envelope_display, centroid, env_type="Max", unit=unit,
+                            pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
+                        )
                         env_comp_path = os.path.join(tmp_dir, "env_comp.png")
                         export_figure_to_png(fig_env_comp, env_comp_path)
                         plot_paths.append((env_comp_path, "Envelope — Max Axial Compression"))
 
-                        fig_env_tens = plot_envelope_axial(df_envelope_display, centroid, env_type="Min", unit=unit)
+                        fig_env_tens = plot_envelope_axial(
+                            df_envelope_display, centroid, env_type="Min", unit=unit,
+                            pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
+                        )
                         env_tens_path = os.path.join(tmp_dir, "env_tens.png")
                         export_figure_to_png(fig_env_tens, env_tens_path)
                         plot_paths.append((env_tens_path, "Envelope — Max Axial Tension"))
 
-                        fig_env_lat_max = plot_envelope_lateral(df_envelope_display, centroid, env_type="Max", unit=unit)
+                        fig_env_lat_max = plot_envelope_lateral(
+                            df_envelope_display, centroid, env_type="Max", unit=unit,
+                            pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
+                        )
                         env_lat_max_path = os.path.join(tmp_dir, "env_lat_max.png")
                         export_figure_to_png(fig_env_lat_max, env_lat_max_path)
                         plot_paths.append((env_lat_max_path, "Envelope — Max Lateral Resultant"))
 
-                        fig_env_lat_min = plot_envelope_lateral(df_envelope_display, centroid, env_type="Min", unit=unit)
+                        fig_env_lat_min = plot_envelope_lateral(
+                            df_envelope_display, centroid, env_type="Min", unit=unit,
+                            pile_shape=pile_shape, pile_dim=pile_dim, pilecap_boundary=pilecap_boundary,
+                        )
                         env_lat_min_path = os.path.join(tmp_dir, "env_lat_min.png")
                         export_figure_to_png(fig_env_lat_min, env_lat_min_path)
                         plot_paths.append((env_lat_min_path, "Envelope — Min Lateral Resultant"))
